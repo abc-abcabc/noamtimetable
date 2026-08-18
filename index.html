@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>학사일정 연동 자동 시간표 생성기</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  
+  <!-- Firebase SDK (v10 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      /* Apple Design System Color Palette */
+      --primary: #0066cc;           /* Action Blue (Apple signature interactive blue) */
+      --primary-hover: #0071e3;     /* Focus Blue */
+      --primary-active: #0055b3;
+      --primary-light: #e5f1fc;
+      --primary-subtle: #f0f7ff;
+      --primary-on-dark: #2997ff;
+
+      --ink: #1d1d1f;              /* Near-Black Apple Ink */
+      --ink-muted: #86868b;        /* Apple Secondary Gray */
+      --ink-subtle: #a1a1a6;
+      --divider-soft: #f0f0f0;
+      --hairline: #d2d2d7;
+      --hairline-light: #e5e5ea;
+
+      --canvas: #ffffff;
+      --canvas-parchment: #f5f5f7;  /* Apple Signature Parchment */
+      --surface-pearl: #fafafc;
+      --surface-tile: #1d1d1f;
+      --surface-chip-translucent: rgba(210, 210, 215, 0.64);
+
+      /* Highlight tints (Soft Apple Pastels) */
+      --highlight-yellow: #fef9c3;
+      --highlight-blue: #e0f2fe;
+      --highlight-green: #dcfce7;
+      --highlight-pink: #fce7f3;
+      --holiday-bg: #fff5f5;
+      --holiday-text: #d70015;
+
+      /* Layout & Tokens */
+      --text-main: #1d1d1f;
+      --text-muted: #86868b;
+      --text-slot: #1d1d1f;
+      --bg-page: #f5f5f7;
+      --bg-card: #ffffff;
+
+      --radius-xs: 5px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-pill: 9999px;
+
+      /* Apple Minimal Depth & Shadows */
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+      --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+      --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.06);
+
+      /* Typography Scaling */
+      --slot-font-size: 13px;
+      --date-font-size: 14px;
+      --note-font-size: 11.5px;
+      --period-badge-size: 11px;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Pretendard", system-ui, sans-serif;
+      letter-spacing: -0.015em;
+    }
+
+    /* 한 페이지에 스크롤 없이 꼭 맞도록 최적화 */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+
+    /* 상단 앱 헤더 (Apple Frosted Glass Style) */
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      padding: 8px 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--hairline-light);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 8px;
+      flex-shrink: 0;
+      gap: 12px;
+    }
+    .app-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .app-icon {
+      width: 34px;
+      height: 34px;
+      background: var(--ink);
+      color: white;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    }
+    .app-title-box h1 {
+      margin: 0;
+      font-size: 16.5px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.025em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* 인라인 제목 편집 영역(.editable-title) 전용 스타일 */
+    .editable-title {
+      cursor: text;
+      border-bottom: 1px dashed transparent;
+      padding: 1px 4px;
+      border-radius: 4px;
+      transition: background-color 0.12s, border-color 0.12s;
+    }
+    .editable-title:hover {
+      background-color: var(--primary-light); /* 마우스 올렸을 때 연한 블루 하이라이트 */
+      border-bottom-color: var(--primary);
+    }
+    .editable-title:focus {
+      outline: none;
+      background-color: #ffffff;
+      border-bottom-style: solid;
+      border-bottom-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.18); /* 포커스 시 부드러운 아웃라인 */
+    }
+    .year-badge {
+      font-size: 11.5px;
+      font-weight: 600;
+      background: var(--canvas-parchment);
+      color: var(--ink);
+      padding: 2px 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--hairline);
+      letter-spacing: -0.01em;
+    }
+
+    /* 요약 통계 카드 그룹 (Apple Capsule Stat Cards) */
+    .header-summary-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      margin-right: 6px;
+      flex-wrap: wrap;
+    }
+    .h-summary-card {
+      background: var(--canvas-parchment);
+      border: 1px solid var(--hairline-light);
+      border-radius: 10px;
+      padding: 4px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 95px;
+      transition: background-color 0.15s ease;
+    }
+    .h-summary-card .h-label {
+      font-size: 10px;
+      color: var(--ink-muted);
+      font-weight: 500;
+      line-height: 1.1;
+      white-space: nowrap;
+      letter-spacing: -0.01em;
+    }
+    .h-summary-card .h-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      line-height: 1.2;
+      margin-top: 1px;
+      white-space: nowrap;
+      letter-spacing: -0.02em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* 메인 레이아웃 (Apple 2-Column Grid) */
+    .app-container {
+      display: grid;
+      grid-template-columns: 395px 1fr;
+      gap: 10px;
+      flex: 1;
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--hairline-light);
+      box-shadow: var(--shadow-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* 탭 네비게이션 (Apple iOS Segmented Control Style) */
+    .tab-header {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: var(--canvas-parchment);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+      border: 1px solid var(--hairline-light);
+    }
+    .tab-btn {
+      padding: 7px 2px;
+      border: none;
+      background: transparent;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      text-align: center;
+      border-radius: 7px;
+    }
+    .tab-btn:hover {
+      color: var(--ink);
+    }
+    .tab-btn.active {
+      color: var(--ink);
+      background: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+    }
+    .tab-pane {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .tab-pane.active {
+      display: block;
+      animation: fadeIn 0.15s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 섹션 공통 스타일 */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 8px 0 4px;
+      letter-spacing: -0.02em;
+    }
+    .section-title:first-child {
+      margin-top: 0;
+    }
+    .section-title .badge-num {
+      background: var(--ink);
+      color: white;
+      font-size: 10px;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+    }
+
+    label {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-muted);
+      display: block;
+      margin-top: 6px;
+      margin-bottom: 2px;
+      letter-spacing: -0.01em;
+    }
+
+    /* Apple Style Form Inputs */
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--hairline);
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink);
+      background: #ffffff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.18);
+    }
+    textarea {
+      resize: none;
+      font-family: inherit;
+      line-height: 1.45;
+    }
+
+    /* 버튼 스타일 (Apple Action Blue & Pill CTAs) */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+      text-decoration: none;
+      user-select: none;
+    }
+    .btn:active {
+      transform: scale(0.96);
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+    .btn-secondary {
+      background: var(--canvas-parchment);
+      border-color: var(--hairline-light);
+      color: var(--ink);
+    }
+    .btn-secondary:hover {
+      background: #e5e5ea;
+      border-color: var(--hairline);
+    }
+    .btn-accent {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fde68a;
+    }
+    .btn-accent:hover {
+      background: #fde68a;
+    }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: var(--radius-pill);
+    }
+    .btn-block {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 13.5px;
+      font-weight: 600;
+      margin-top: 8px;
+      flex-shrink: 0;
+      border-radius: var(--radius-pill);
+      box-shadow: 0 2px 8px rgba(0, 102, 204, 0.22);
+    }
+
+    /* 기초시간표 테이블 (Apple Minimal Grid) */
+    .base-table-wrapper {
+      border: 1px solid var(--hairline-light);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 4px;
+      background: white;
+    }
+    .base-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+    .base-table th, .base-table td {
+      border: 1px solid var(--hairline-light);
+      padding: 1px;
+      text-align: center;
+      font-size: 11.5px;
+    }
+    .base-table th {
+      background: var(--canvas-parchment);
+      font-weight: 600;
+      color: var(--ink-muted);
+      padding: 6px 0;
+      letter-spacing: -0.01em;
+    }
+    .base-table td.period-label {
+      background: var(--canvas-parchment);
+      font-weight: 600;
+      color: var(--ink-muted);
+      width: 30px;
+    }
+    .base-table input {
+      width: 100%;
+      border: none;
+      text-align: center;
+      padding: 5px 0;
+      font-size: 12px;
+      font-weight: 600;
+      background: transparent;
+      border-radius: 0;
+      color: var(--ink);
+    }
+    .base-table input:focus {
+      outline: none;
+      background: var(--primary-light);
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+
+    /* 과목/시수 테이블 */
+    .target-table-wrapper {
+      border: 1px solid var(--hairline-light);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 4px;
+      max-height: 180px;
+      overflow-y: auto;
+      background: white;
+    }
+    .target-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 11.5px;
+    }
+    .target-table th {
+      position: sticky;
+      top: 0;
+      background: var(--canvas-parchment);
+      border-bottom: 1px solid var(--hairline-light);
+      padding: 6px 4px;
+      font-weight: 600;
+      color: var(--ink-muted);
+      z-index: 1;
+    }
+    .target-table td {
+      border: 1px solid var(--hairline-light);
+      padding: 2px 3px;
+      text-align: center;
+    }
+    .target-table input {
+      padding: 4px 6px;
+      margin: 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+    }
+    .class-tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--canvas-parchment);
+      border: 1px solid var(--hairline-light);
+      font-size: 11px;
+    }
+
+    /* 시수 진행 현황 바 */
+    .progress-list {
+      margin-top: 6px;
+      background: var(--canvas-parchment);
+      border-radius: 10px;
+      border: 1px solid var(--hairline-light);
+      padding: 8px 10px;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .progress-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .progress-item:last-child { margin-bottom: 0; }
+    .progress-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: #e5e5ea;
+      border-radius: var(--radius-pill);
+      margin: 0 8px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: var(--radius-pill);
+      transition: width 0.3s ease;
+    }
+    .progress-bar-fill.complete {
+      background: #34c759; /* Apple iOS System Green */
+    }
+
+    /* 우측 캘린더 상단 네비게이션 & 툴바 */
+    .cal-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .month-nav-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .year-select, .month-select {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ink);
+      padding: 4px 10px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-pill);
+      background: var(--canvas-parchment);
+      cursor: pointer;
+      width: auto;
+    }
+    
+    /* 글자 크기 조절 컨트롤러 (Apple Segmented Capsule) */
+    .font-size-control-group {
+      display: inline-flex;
+      align-items: center;
+      background: var(--canvas-parchment);
+      border: 1px solid var(--hairline-light);
+      border-radius: var(--radius-pill);
+      padding: 2px 6px;
+      gap: 3px;
+    }
+    .font-size-btn {
+      background: white;
+      border: 1px solid var(--hairline-light);
+      border-radius: var(--radius-pill);
+      font-weight: 600;
+      font-size: 10.5px;
+      padding: 2px 7px;
+      cursor: pointer;
+      color: var(--ink);
+      transition: all 0.1s;
+    }
+    .font-size-btn:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .font-size-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-muted);
+      min-width: 36px;
+      text-align: center;
+    }
+
+    .cal-filter-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .cal-filter-group select {
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius-pill);
+      background: var(--canvas-parchment);
+      width: auto;
+    }
+
+    /* 캘린더 테이블 (Apple Modern Clean Grid) */
+    .cal-container {
+      border: 1px solid var(--hairline-light);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      background: white;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .cal-table {
+      width: 100%;
+      height: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: white;
+    }
+    .cal-table thead {
+      flex-shrink: 0;
+    }
+    .cal-table th {
+      background: var(--canvas-parchment);
+      color: var(--ink-muted);
+      padding: 8px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      width: 20%;
+      border: 1px solid var(--hairline-light);
+      letter-spacing: -0.01em;
+    }
+    .cal-table tbody {
+      height: 100%;
+    }
+    .cal-table td {
+      border: 1px solid var(--hairline-light);
+      vertical-align: top;
+      padding: 0;
+      position: relative;
+    }
+    .day-cell {
+      height: 100%;
+      min-height: 80px;
+      padding: 5px 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      position: relative;
+      transition: background-color 0.12s;
+      overflow: hidden;
+    }
+    .day-cell:hover:not(.other-month) {
+      background-color: #fafafc;
+    }
+    .day-cell.other-month {
+      background: #fbfbfd;
+      color: #aeaeb2;
+      cursor: default;
+      opacity: 0.35;
+    }
+    .day-cell.today-cell {
+      box-shadow: inset 0 0 0 2px var(--primary);
+    }
+    .day-cell.highlight-yellow { background-color: var(--highlight-yellow) !important; }
+    .day-cell.highlight-blue { background-color: var(--highlight-blue) !important; }
+    .day-cell.highlight-green { background-color: var(--highlight-green) !important; }
+    .day-cell.highlight-pink { background-color: var(--highlight-pink) !important; }
+    .day-cell.holiday { background-color: var(--holiday-bg) !important; }
+
+    /* 날짜 헤더 뱃지 */
+    .cell-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px;
+      padding-bottom: 2px;
+      border-bottom: 1px solid var(--hairline-light);
+      flex-shrink: 0;
+    }
+    .date-badge {
+      font-weight: 600;
+      font-size: var(--date-font-size);
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    .date-badge.red {
+      color: var(--holiday-text);
+    }
+    .today-tag {
+      font-size: 9px;
+      background: var(--primary);
+      color: white;
+      padding: 1px 4px;
+      border-radius: var(--radius-pill);
+      font-weight: 600;
+    }
+    .day-period-count {
+      font-size: 10.5px;
+      color: var(--ink-muted);
+      font-weight: 500;
+    }
+
+    /* 수업 슬롯 목록 (Apple Minimal Tags) */
+    .slots-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .slot-item {
+      font-size: var(--slot-font-size);
+      line-height: 1.3;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: var(--canvas-parchment);
+      border: 1px solid var(--hairline-light);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .slot-item .period-num {
+      font-size: var(--period-badge-size);
+      background: var(--primary);
+      color: white;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .slot-item.strike {
+      text-decoration: line-through;
+      color: var(--ink-muted);
+      background: rgba(142, 142, 147, 0.12);
+      border-color: var(--hairline-light);
+    }
+    .slot-item.dimmed {
+      opacity: 0.18;
+    }
+    .slot-item.filtered-match {
+      background: #fef08a;
+      color: #854d0e;
+      box-shadow: 0 0 0 1px #eab308;
+    }
+
+    /* 개별 수동 메모 */
+    .slot-note {
+      font-size: var(--note-font-size);
+      color: var(--holiday-text);
+      font-weight: 600;
+      margin-top: 2px;
+      padding: 2px 5px;
+      background: #fee2e2;
+      border-radius: 4px;
+      border: 1px solid #fecaca;
+      line-height: 1.2;
+      word-break: break-all;
+      flex-shrink: 0;
+    }
+    .holiday-badge {
+      font-size: 11.5px;
+      color: var(--holiday-text);
+      font-weight: 600;
+      text-align: center;
+      margin: auto 0;
+      padding: 6px 3px;
+      background: rgba(254, 226, 226, 0.85);
+      border-radius: 6px;
+      border: 1px dashed rgba(220, 38, 38, 0.4);
+    }
+
+    /* 모달 공통 (Apple Card Dialog Style) */
+    .modal-wrap {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      animation: fadeIn 0.15s ease-out;
+    }
+    .modal-box {
+      background: white;
+      padding: 24px;
+      border-radius: 20px;
+      width: 440px;
+      max-width: 92vw;
+      box-shadow: var(--shadow-modal);
+      border: 1px solid var(--hairline-light);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--hairline-light);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .modal-header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--ink-muted);
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .modal-close-btn:hover {
+      color: var(--ink);
+    }
+    .color-picker-group {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .color-opt {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .color-opt.selected {
+      border-color: var(--ink);
+      transform: scale(1.15);
+    }
+
+    /* 프린트 전용 스타일 (A4 가로 인쇄 최적화) */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
+      html, body {
+        overflow: visible !important;
+        height: auto !important;
+        background: white !important;
+        padding: 0 !important;
+        color: black !important;
+      }
+      .app-header, .card:first-child, .cal-filter-group, .font-size-control-group, .month-nav-group button, .year-select, .month-select {
+        display: none !important;
+      }
+      .app-container {
+        display: block !important;
+      }
+      .card {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+      .cal-table th {
+        background: #1d1d1f !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .slot-item {
+        border: 1px solid #d2d2d7 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .day-cell {
+        min-height: 105px !important;
+        height: 105px !important;
+        page-break-inside: avoid;
+      }
+      .day-cell.highlight-yellow { background-color: #fef9c3 !important; -webkit-print-color-adjust: exact; }
+      .day-cell.holiday { background-color: #fee2e2 !important; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 상단 헤더 (타이틀 + 2026학년도 옆 통계 카드 4개 + 인쇄 버튼) -->
+<header class="app-header">
+  <div class="app-title-wrap">
+    <div class="app-icon">📅</div>
+    <div class="app-title-box">
+      <h1>
+        <span id="appTitleText" class="editable-title" contenteditable="true" onblur="onTitleBlur(this.innerText)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" title="시간표 제목을 직접 클릭해서 수정해 보세요!">학사일정 연동 자동 시간표 생성기</span>
+        <span class="year-badge" id="headerYearBadge">2026학년도</span>
+      </h1>
+    </div>
+  </div>
+
+  <!-- 2026학년도 글자 옆 요약 통계 카드들 (월 수업일수, 월 총 수업시수, 휴업일/공휴일) -->
+  <div class="header-summary-group">
+    <div class="h-summary-card">
+      <span class="h-label">해당 월 수업일수</span>
+      <span class="h-value" id="statSchoolDays">0일</span>
+    </div>
+    <div class="h-summary-card">
+      <span class="h-label">해당 월 총 수업시수</span>
+      <span class="h-value" id="statTotalSlots">0시간</span>
+    </div>
+    <div class="h-summary-card">
+      <span class="h-label">휴업일 / 공휴일</span>
+      <span class="h-value" id="statHolidays">0일</span>
+    </div>
+  </div>
+
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="window.print()" title="현재 달력 인쇄 (A4 가로 권장)">🖨️ 시간표 인쇄</button>
+  </div>
+</header>
+
+<div class="app-container">
+  <!-- 좌측 설정 패널 (탭 구성) -->
+  <div class="card">
+    <div class="tab-header">
+      <button class="tab-btn active" onclick="switchTab(event, 'tabSchedule')">📅 1.학사일정</button>
+      <button class="tab-btn" onclick="switchTab(event, 'tabBase')">📋 2.기초시간표</button>
+      <button class="tab-btn" onclick="switchTab(event, 'tabMeta')">🎯 3.과목·시수</button>
+      <button class="tab-btn" onclick="switchTab(event, 'tabDisplay')">⚙️ 4.표시옵션</button>
+    </div>
+
+    <!-- 탭 1: 학사일정 -->
+    <div class="tab-pane active" id="tabSchedule">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="section-title"><span class="badge-num">1</span> 학기 기간 및 연도 연동</div>
+        <div style="display:flex; gap:4px;">
+          <button class="btn btn-secondary btn-sm" onclick="applyPresetSemesterForCurrentYear(1)">🌱 1학기</button>
+          <button class="btn btn-accent btn-sm" onclick="applyPresetSemesterForCurrentYear(2)">🍁 2학기</button>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 2px;">
+        <div>
+          <label for="startDate">개학일</label>
+          <input type="date" id="startDate" value="2026-08-18" onchange="onStartDateChange()">
+        </div>
+        <div>
+          <label for="endDate">종업/졸업일</label>
+          <input type="date" id="endDate" value="2026-12-31" onchange="autoSaveAndRecalculate()">
+        </div>
+      </div>
+      
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;">
+        <label for="holidays" style="margin:0;">공휴일 및 재량휴업일 (YYYY-MM-DD : 사유)</label>
+        <button class="btn btn-secondary btn-sm" onclick="generateHolidaysForSelectedYear()" title="현재 선택된 연도의 공휴일을 자동으로 계산하여 적용합니다.">🔄 공휴일 생성</button>
+      </div>
+      <textarea id="holidays" rows="7" style="margin-top:3px;" onchange="autoSaveAndRecalculate()"></textarea>
+
+      <div style="margin-top: 8px; background: var(--canvas-parchment); padding: 8px 12px; border-radius: 9px; font-size: 11.5px; color: var(--ink-muted); border: 1px solid var(--hairline-light); font-weight: 400; line-height: 1.4;">
+        💡 <b>공휴일 연동</b>: 공휴일 및 재량휴업일만 달력에 표시되며, 다른 학교 행사는 기록되지 않습니다.
+      </div>
+    </div>
+
+    <!-- 탭 2: 기초시간표 -->
+    <div class="tab-pane" id="tabBase">
+      <div class="section-title"><span class="badge-num">2</span> 주간 기초시간표 (교시별 학급)</div>
+      <p style="font-size:11.5px; color:var(--ink-muted); margin:0 0 6px;">
+        각 요일·교시에 수업할 학급(예: 4난, 5매 등)을 입력하세요.
+      </p>
+      <div class="base-table-wrapper">
+        <table class="base-table" id="baseTable">
+          <thead>
+            <tr><th>교시</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="clearBaseTable()">시간표 비우기</button>
+        <button class="btn btn-secondary btn-sm" onclick="resetDefaultBaseTable()">기본값 복원</button>
+      </div>
+    </div>
+
+    <!-- 탭 3: 과목 및 총 시수 -->
+    <div class="tab-pane" id="tabMeta">
+      <div class="section-title"><span class="badge-num">3</span> 학급별 과목명 및 목표 시수</div>
+      <div class="target-table-wrapper">
+        <table class="target-table">
+          <thead>
+            <tr>
+              <th style="width: 25%;">학급</th>
+              <th style="width: 45%;">과목명</th>
+              <th style="width: 30%;">목표 시수</th>
+            </tr>
+          </thead>
+          <tbody id="targetTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="margin-top:10px;">📊 배정 시수 달성 현황</div>
+      <div class="progress-list" id="progressList">
+        <!-- 동적 렌더링 -->
+      </div>
+
+      <!-- 과목 및 시수 설정 제어 버튼 그룹 (사용자 요청 반영) -->
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="clearMetaInputs()" title="모든 학급의 과목명을 지우고 목표 시수를 35로 초기화합니다.">과목·시수 비우기</button>
+        <button class="btn btn-secondary btn-sm" onclick="resetDefaultMeta()" title="최초 내장된 기본 과목명 및 목표 시수 값으로 되돌립니다.">기본값 복원</button>
+      </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px;">
+        <button class="btn btn-secondary btn-sm" onclick="saveUserDefaultMeta()" title="현재 입력된 과목명과 목표 시수 세팅을 나만의 기본값으로 브라우저에 저장합니다.">현재 설정 저장</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadUserDefaultMeta()" title="저장해둔 나만의 기본값을 가져와 즉시 적용합니다.">저장 설정 불러오기</button>
+      </div>
+    </div>
+
+    <!-- 탭 4: 표시 옵션 -->
+    <div class="tab-pane" id="tabDisplay">
+      <div class="section-title"><span class="badge-num">4</span> 달력 표기 및 글자 크기 설정</div>
+      
+      <label for="appTitleInput">시간표 제목 설정</label>
+      <input type="text" id="appTitleInput" value="학사일정 연동 자동 시간표 생성기" placeholder="시간표 제목을 입력하세요" oninput="updateAppTitleFromInput(this.value)" style="margin-bottom: 10px;">
+      
+      <label for="displayFormat">달력 표기 형식</label>
+      <select id="displayFormat" onchange="autoSaveAndRecalculate()">
+        <option value="class_subj">4난 체육(1/35)</option>
+        <option value="tag_class">[체육] 4난(1/35)</option>
+        <option value="class_only">4난(1/35)</option>
+        <option value="subj_only">체육(1/35)</option>
+      </select>
+
+      <div style="margin-top: 10px;">
+        <label>시간표 글자 크기 조절</label>
+        <div style="display:flex; gap:6px; margin-top:3px;">
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="setFontSizeScale(85)">85%</button>
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="setFontSizeScale(100)">100%</button>
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="setFontSizeScale(115)">115%</button>
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="setFontSizeScale(130)">130%</button>
+        </div>
+      </div>
+
+      <div style="margin-top: 12px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--ink); font-size:12.5px;">
+          <input type="checkbox" id="showPeriodNumber" checked onchange="autoSaveAndRecalculate()" style="width:auto; margin:0; accent-color:var(--primary);">
+          교시 번호 뱃지 표시 (1, 2, 3...)
+        </label>
+      </div>
+    </div>
+
+    <!-- 탭별 반응형 계산 버튼 -->
+    <button class="btn btn-primary btn-block" id="mainCalcBtn" onclick="calculateAndRender(true)">
+      ⚡ 1. 학사일정 반영 및 시간표 계산
+    </button>
+  </div>
+
+  <!-- 우측 캘린더 영역 -->
+  <div class="card">
+    <div class="cal-top-bar">
+      <!-- 연도/월 직관적 선택 네비게이션 -->
+      <div class="month-nav-group">
+        <button class="btn btn-secondary btn-sm" onclick="changeMonth(-1)">◀ 이전달</button>
+        
+        <select class="year-select" id="calYearSelect" onchange="onCalSelectChange()"></select>
+        <select class="month-select" id="calMonthSelect" onchange="onCalSelectChange()"></select>
+        
+        <button class="btn btn-secondary btn-sm" onclick="changeMonth(1)">다음달 ▶</button>
+        <button class="btn btn-secondary btn-sm" onclick="goToTodayMonth()">오늘</button>
+        <button class="btn btn-secondary btn-sm" onclick="goToCurrentSemesterStart()">학기초</button>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <!-- 글자 크기 줌 버튼 그룹 -->
+        <div class="font-size-control-group" title="달력 글자 크기 확대/축소">
+          <span style="font-size:11px; font-weight:600; color:var(--ink-muted);">글자:</span>
+          <button class="font-size-btn" onclick="adjustFontSizeStep(-1)">가-</button>
+          <span class="font-size-label" id="fontSizeIndicator">100%</span>
+          <button class="font-size-btn" onclick="adjustFontSizeStep(1)">가+</button>
+        </div>
+
+        <div class="cal-filter-group">
+          <span style="font-size:11.5px; font-weight:600; color:var(--ink-muted);">학급:</span>
+          <select id="classFilter" onchange="renderCalendarView()">
+            <option value="ALL">전체 보기</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="cal-container">
+      <table class="cal-table">
+        <thead>
+          <tr>
+            <th>월요일</th>
+            <th>화요일</th>
+            <th>수요일</th>
+            <th>목요일</th>
+            <th>금요일</th>
+          </tr>
+        </thead>
+        <tbody id="calendarBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 개별 수정 모달 -->
+<div class="modal-wrap" id="modalWrap" onclick="if(event.target===this) closeModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle">날짜별 시간표 수정</h3>
+      <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+    </div>
+
+    <label>수업 내용 (줄단위 입력, 결강은 맨 앞 <code>-</code> 입력):</label>
+    <textarea id="modalSlots" rows="5" placeholder="예:&#10;4난 체육(1/35)&#10;-5매 음악 (결강 처리)"></textarea>
+    
+    <label>행사 및 변경 메모:</label>
+    <input type="text" id="modalNote" placeholder="예: 단축수업, 동아리 등">
+    
+    <label>셀 배경 하이라이트 색상:</label>
+    <div class="color-picker-group">
+      <div class="color-opt selected" style="background:#ffffff; border:1px solid #d2d2d7;" data-color="" onclick="selectModalHighlight('')" title="기본"></div>
+      <div class="color-opt" style="background:var(--highlight-yellow);" data-color="highlight-yellow" onclick="selectModalHighlight('highlight-yellow')" title="노란색"></div>
+      <div class="color-opt" style="background:var(--highlight-blue);" data-color="highlight-blue" onclick="selectModalHighlight('highlight-blue')" title="하늘색"></div>
+      <div class="color-opt" style="background:var(--highlight-green);" data-color="highlight-green" onclick="selectModalHighlight('highlight-green')" title="연두색"></div>
+      <div class="color-opt" style="background:var(--highlight-pink);" data-color="highlight-pink" onclick="selectModalHighlight('highlight-pink')" title="분홍색"></div>
+    </div>
+
+    <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline-light); display: flex; gap: 8px;">
+      <button class="btn btn-primary" style="flex:2;" onclick="saveCellEdit()">💾 저장</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="resetCellToDefault()">초기화</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 시간표 계산 완료 안내 팝업 모달 -->
+<div class="modal-wrap" id="completionModalWrap" onclick="if(event.target===this) closeCompletionAlert()">
+  <div class="modal-box" style="width: 380px; text-align: center; padding: 28px 24px;">
+    <div style="width: 48px; height: 48px; background: #e5f1fc; color: #0066cc; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; margin: 0 auto 14px;">
+      ✓
+    </div>
+    <h3 id="completionModalTitle" style="margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em;">시간표 계산 완료!</h3>
+    <p id="completionModalDesc" style="margin: 0 0 20px; font-size: 13px; color: var(--ink-muted); line-height: 1.45; font-weight: 400;">
+      학사일정 및 주간 기초시간표가 캘린더에 성공적으로 계산되어 갱신되었습니다.
+    </p>
+    <button class="btn btn-primary btn-block" style="margin-top: 0; padding: 10px 0; font-size: 13.5px;" onclick="closeCompletionAlert()">
+      확인
+    </button>
+  </div>
+</div>
+
+<script>
+  // 사용자 제공 기본 내장 Firebase Config (first-app-75a15)
+  const defaultFirebaseConfig = {
+    apiKey: "AIzaSyCMLAiGEDehF8_Q70tggvgwFqhjFWTnhv8",
+    authDomain: "first-app-75a15.firebaseapp.com",
+    projectId: "first-app-75a15",
+    storageBucket: "first-app-75a15.firebasestorage.app",
+    messagingSenderId: "595692929185",
+    appId: "1:595692929185:web:9ac1275a4bdc964cecb0e0",
+    measurementId: "G-HNLWN2ZTSS"
+  };
+
+  /* =========================================================
+     📅 사용자 지정 공휴일 및 학교 행사 일정 (정확한 목록만 반영)
+     ========================================================= */
+  // 사용자가 입력한 공휴일 및 재량휴업일을 연도별/학기별로 구분하여 정의한 사전 데이터입니다.
+  const userSpecifiedHolidays = {
+    // 2026학년도 일정 정보
+    2026: {
+      // 1학기: 2026-03-03 (개학식) ~ 2026-07-23 (여름방학식)
+      // 1~2월 공휴일도 1학기 시작 전 달력에 정상 표시될 수 있도록 1학기 프리셋에 미리 포함합니다.
+      1: `2026-01-01 : 새해첫날
+2026-02-16 : 설날 연휴
+2026-02-17 : 설날
+2026-02-18 : 설날 연휴
+2026-03-01 : 삼일절
+2026-03-02 : 쉬는 날 삼일절
+2026-05-01 : 학교장재량휴업일
+2026-05-04 : 학교장재량휴업일
+2026-05-05 : 어린이날
+2026-05-24 : 부처님오신날
+2026-05-25 : 쉬는 날 부처님오신날
+2026-06-03 : 지방선거일
+2026-06-06 : 현충일
+2026-07-17 : 제헌절`,
+
+      // 2학기: 2026-08-18 (2학기 개학식) ~ 2026-12-31 (겨울방학식)
+      2: `2026-08-15 : 광복절
+2026-08-17 : 쉬는 날 광복절
+2026-09-24 : 추석 연휴
+2026-09-25 : 추석
+2026-09-26 : 추석 연휴
+2026-10-03 : 개천절
+2026-10-05 : 쉬는 날 개천절
+2026-10-09 : 한글날
+2026-12-25 : 크리스마스`
+    },
+    // 2027학년도 일정 정보
+    2027: {
+      // 1학기: 2027년 1월 ~ 3월 초순까지 사용자가 입력한 공휴일 목록
+      1: `2027-01-01 : 새해첫날
+2027-02-06 : 설날
+2027-02-08 : 설날 연휴
+2027-03-01 : 삼일절`,
+      // 2학기는 제공된 데이터가 없어 빈 문자열로 둡니다.
+      2: ``
+    }
+  };
+
+  const koreanLunarHolidays = {
+    2024: { seollal: ['2024-02-09', '2024-02-10', '2024-02-11', '2024-02-12'], buddha: '2024-05-15', chuseok: ['2024-09-16', '2024-09-17', '2024-09-18'] },
+    2025: { seollal: ['2025-01-28', '2025-01-29', '2025-01-30'], buddha: '2025-05-05', chuseok: ['2025-10-05', '2025-10-06', '2025-10-07', '2025-10-08'] },
+    2026: { seollal: ['2026-02-16', '2026-02-17', '2026-02-18'], buddha: '2026-05-24', buddhaSub: '2026-05-25', chuseok: ['2026-09-24', '2026-09-25', '2026-09-26'] },
+    2027: { seollal: ['2027-02-06', '2027-02-07', '2027-02-08'], buddha: '2027-05-13', chuseok: ['2027-09-14', '2027-09-15', '2027-09-16'] },
+    2028: { seollal: ['2028-01-26', '2028-01-27', '2028-01-28'], buddha: '2028-05-02', chuseok: ['2028-10-02', '2028-10-03', '2028-10-04'] },
+    2029: { seollal: ['2029-02-12', '2029-02-13', '2029-02-14', '2029-02-15'], buddha: '2029-05-20', chuseok: ['2029-09-21', '2029-09-22', '2029-09-23'] },
+    2030: { seollal: ['2030-02-02', '2030-02-03', '2030-02-04'], buddha: '2030-05-09', chuseok: ['2030-09-11', '2030-09-12', '2030-09-13'] }
+  };
+
+  // 연도별 공휴일 자동 계산 생성기 (사용자 지정 리스트 우선 연동)
+  function getHolidaysForYearAndSemester(year, semester) {
+    // 사용자가 입력한 공휴일 목록이 지정된 연도 및 학기에 존재할 경우 우선 반환합니다.
+    if (userSpecifiedHolidays[year] && userSpecifiedHolidays[year][semester]) {
+      return userSpecifiedHolidays[year][semester];
+    }
+
+    const holidays = [];
+    const getDow = (dStr) => parseDate(dStr).getDay();
+
+    function addSubstituteIfWeekend(dStr, name) {
+      holidays.push(`${dStr} : ${name}`);
+      const dow = getDow(dStr);
+      if (dow === 0) {
+        const nextDate = parseDate(dStr);
+        nextDate.setDate(nextDate.getDate() + 1);
+        holidays.push(`${formatDate(nextDate)} : 쉬는 날 ${name}`);
+      } else if (dow === 6) {
+        const nextDate = parseDate(dStr);
+        nextDate.setDate(nextDate.getDate() + 2);
+        holidays.push(`${formatDate(nextDate)} : 쉬는 날 ${name}`);
+      }
+    }
+
+    const lunar = koreanLunarHolidays[year];
+
+    if (semester === 1) {
+      addSubstituteIfWeekend(`${year}-03-01`, '삼일절');
+      holidays.push(`${year}-05-01 : 학교장재량휴업일`);
+      holidays.push(`${year}-05-04 : 학교장재량휴업일`);
+      addSubstituteIfWeekend(`${year}-05-05`, '어린이날');
+
+      if (lunar && lunar.buddha) {
+        if (lunar.buddhaSub) {
+          holidays.push(`${lunar.buddha} : 부처님오신날`);
+          holidays.push(`${lunar.buddhaSub} : 쉬는 날 부처님오신날`);
+        } else {
+          addSubstituteIfWeekend(lunar.buddha, '부처님오신날');
+        }
+      }
+
+      holidays.push(`${year}-06-06 : 현충일`);
+      holidays.push(`${year}-07-17 : 제헌절`);
+    } else {
+      addSubstituteIfWeekend(`${year}-08-15`, '광복절');
+
+      if (lunar && lunar.chuseok) {
+        lunar.chuseok.forEach((d, idx) => {
+          const reason = idx === 1 ? '추석' : '추석 연휴';
+          holidays.push(`${d} : ${reason}`);
+        });
+      }
+
+      addSubstituteIfWeekend(`${year}-10-03`, '개천절');
+      addSubstituteIfWeekend(`${year}-10-09`, '한글날');
+      holidays.push(`${year}-12-25 : 크리스마스`);
+    }
+
+    return Array.from(new Set(holidays)).sort().join('\n');
+  }
+
+  // 기본 기초시간표 (6교시 x 5요일)
+  const defaultSchedule = [
+    ["4난", "5매", "1매", "4난", "(1매)"],
+    ["4매", "5난", "1난", "4매", "(1난)"],
+    ["3매", "6매", "2매", "6매", "3매"],
+    ["3난", "6난", "2난", "6난", "3난"],
+    ["", "", "", "", ""],
+    ["", "", "", "", ""]
+  ];
+
+  const defaultMeta = {
+    "1난": { subj: "즐생", total: 34 },
+    "1매": { subj: "즐생", total: 34 },
+    "2난": { subj: "체육", total: 17 },
+    "2매": { subj: "체육", total: 17 },
+    "3난": { subj: "체육", total: 35 },
+    "3매": { subj: "체육", total: 35 },
+    "4난": { subj: "체육", total: 35 },
+    "4매": { subj: "체육", total: 35 },
+    "5난": { subj: "음악", total: 17 },
+    "5매": { subj: "음악", total: 17 },
+    "6난": { subj: "체육", total: 35 },
+    "6매": { subj: "체육", total: 35 }
+  };
+
+  let generatedCalendar = {};
+  let manualOverrides = {};
+  let currentViewDate = new Date(2026, 7, 1);
+  let activeModalDate = null;
+  let selectedModalColor = '';
+  let currentFontScale = 100;
+  // 로컬 상태의 최종 변경 시각 초기값입니다.
+  // 최초 접속 시(로컬 스토리지 데이터가 없을 때) Firebase의 원격 데이터를 우선적으로 불러올 수 있도록 과거 시각('1970-01-01')으로 초기화합니다.
+  let lastUpdatedAt = '1970-01-01T00:00:00.000Z';
+
+  // Firebase 관련 상태 변수
+  let fbApp = null;
+  let fbDb = null;
+  let fbUnsubscribe = null;
+  let fbSyncDebounceTimer = null;
+  let isReceivingRemoteUpdate = false;
+
+  /* =========================================================
+     📝 시간표 제목 실시간 상호 동기화 함수 (이중 바인딩)
+     ========================================================= */
+  // 1. 헤더 제목(contenteditable)을 직접 마우스로 수정한 후 포커스를 잃었을 때(Blur) 호출됩니다.
+  window.onTitleBlur = function(newTitle) {
+    const trimmedTitle = newTitle.trim() || '학사일정 연동 자동 시간표 생성기';
+    // 빈 값 방지 및 깔끔한 텍스트 렌더링
+    document.getElementById('appTitleText').innerText = trimmedTitle;
+    
+    // 4번 설정 탭 안의 입력 상자에도 동일하게 동기화합니다.
+    const titleInput = document.getElementById('appTitleInput');
+    if (titleInput) titleInput.value = trimmedTitle;
+    
+    // 변경 사항을 저장하고 데이터베이스에 동기화합니다.
+    autoSaveAndRecalculate();
+  };
+
+  // 2. 4번 설정 탭 내의 텍스트 입력 필드에 값을 칠 때 실시간으로 상단 헤더에 연동합니다.
+  window.updateAppTitleFromInput = function(newTitle) {
+    const trimmedTitle = newTitle.trim() || '학사일정 연동 자동 시간표 생성기';
+    document.getElementById('appTitleText').innerText = trimmedTitle;
+    
+    // 실시간 자동 저장 트리거
+    autoSaveAndRecalculate();
+  };
+
+  function formatDate(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function parseDate(str) {
+    if (!str) return new Date();
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  /* =========================================================
+     🔍 글자 크기 조절 시스템
+     ========================================================= */
+  function setFontSizeScale(scale) {
+    currentFontScale = Math.max(70, Math.min(150, scale));
+    const baseSlot = 12.5;
+    const baseDate = 13.5;
+    const baseNote = 11;
+    const baseBadge = 10.5;
+
+    const r = currentFontScale / 100;
+    document.documentElement.style.setProperty('--slot-font-size', `${(baseSlot * r).toFixed(1)}px`);
+    document.documentElement.style.setProperty('--date-font-size', `${(baseDate * r).toFixed(1)}px`);
+    document.documentElement.style.setProperty('--note-font-size', `${(baseNote * r).toFixed(1)}px`);
+    document.documentElement.style.setProperty('--period-badge-size', `${(baseBadge * r).toFixed(1)}px`);
+
+    const indicator = document.getElementById('fontSizeIndicator');
+    if (indicator) indicator.textContent = `${currentFontScale}%`;
+
+    localStorage.setItem('timetable_font_scale', currentFontScale);
+  }
+
+  function adjustFontSizeStep(delta) {
+    const scales = [75, 85, 100, 115, 130, 145];
+    let currentIndex = scales.indexOf(currentFontScale);
+    if (currentIndex === -1) {
+      currentIndex = scales.findIndex(s => s >= currentFontScale);
+      if (currentIndex === -1) currentIndex = 2;
+    }
+    const nextIndex = Math.max(0, Math.min(scales.length - 1, currentIndex + delta));
+    setFontSizeScale(scales[nextIndex]);
+  }
+
+  function initYearMonthDropdowns() {
+    const ySel = document.getElementById('calYearSelect');
+    const mSel = document.getElementById('calMonthSelect');
+    ySel.innerHTML = '';
+    mSel.innerHTML = '';
+
+    const currentYear = currentViewDate.getFullYear();
+    for (let y = 2024; y <= 2032; y++) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = `${y}년`;
+      if (y === currentYear) opt.selected = true;
+      ySel.appendChild(opt);
+    }
+
+    for (let m = 0; m < 12; m++) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = `${m + 1}월`;
+      if (m === currentViewDate.getMonth()) opt.selected = true;
+      mSel.appendChild(opt);
+    }
+  }
+
+  function syncYearMonthDropdowns() {
+    const ySel = document.getElementById('calYearSelect');
+    const mSel = document.getElementById('calMonthSelect');
+    if (ySel) ySel.value = currentViewDate.getFullYear();
+    if (mSel) mSel.value = currentViewDate.getMonth();
+    
+    const badge = document.getElementById('headerYearBadge');
+    if (badge) {
+      const startYear = parseDate(document.getElementById('startDate').value).getFullYear();
+      badge.textContent = `${startYear}학년도`;
+    }
+  }
+
+  function onCalSelectChange() {
+    const y = parseInt(document.getElementById('calYearSelect').value, 10);
+    const m = parseInt(document.getElementById('calMonthSelect').value, 10);
+    currentViewDate = new Date(y, m, 1);
+    renderCalendarView();
+  }
+
+  function onStartDateChange() {
+    const startVal = document.getElementById('startDate').value;
+    if (!startVal) return;
+    const start = parseDate(startVal);
+    const year = start.getFullYear();
+
+    document.getElementById('headerYearBadge').textContent = `${year}학년도`;
+    currentViewDate = new Date(year, start.getMonth(), 1);
+    syncYearMonthDropdowns();
+
+    autoSaveAndRecalculate();
+  }
+
+  function applyPresetSemesterForCurrentYear(semNum) {
+    const startVal = document.getElementById('startDate').value;
+    const currentYear = parseDate(startVal).getFullYear() || 2026;
+
+    if (semNum === 1) {
+      document.getElementById('startDate').value = `${currentYear}-03-03`;
+      document.getElementById('endDate').value = `${currentYear}-07-23`;
+      document.getElementById('holidays').value = getHolidaysForYearAndSemester(currentYear, 1);
+      currentViewDate = new Date(currentYear, 2, 1);
+    } else {
+      document.getElementById('startDate').value = `${currentYear}-08-18`;
+      document.getElementById('endDate').value = `${currentYear}-12-31`;
+      document.getElementById('holidays').value = getHolidaysForYearAndSemester(currentYear, 2);
+      currentViewDate = new Date(currentYear, 7, 1);
+    }
+
+    syncYearMonthDropdowns();
+    autoSaveAndRecalculate();
+  }
+
+  function generateHolidaysForSelectedYear() {
+    const startVal = document.getElementById('startDate').value;
+    const currentYear = parseDate(startVal).getFullYear() || 2026;
+    const isSem1 = startVal.includes('-03-') || startVal.includes('-04-');
+    const sem = isSem1 ? 1 : 2;
+
+    document.getElementById('holidays').value = getHolidaysForYearAndSemester(currentYear, sem);
+    autoSaveAndRecalculate();
+    alert(`${currentYear}년 ${sem}학기 공휴일 및 재량휴업일이 생성되었습니다.`);
+  }
+
+  let currentActiveTabId = 'tabSchedule';
+
+  const tabButtonInfo = {
+    'tabSchedule': {
+      btnText: '⚡ 1. 학사일정 반영 및 시간표 계산',
+      alertTitle: '학사일정 반영 완료!',
+      alertDesc: '학기 기간 및 공휴일 설정이 시간표에 성공적으로 반영되었습니다.'
+    },
+    'tabBase': {
+      btnText: '⚡ 2. 기초시간표 적용 및 시간표 계산',
+      alertTitle: '기초시간표 적용 완료!',
+      alertDesc: '주간 기초시간표가 캘린더에 성공적으로 계산 및 적용되었습니다.'
+    },
+    'tabMeta': {
+      btnText: '⚡ 3. 과목·시수 적용 및 시간표 계산',
+      alertTitle: '과목 및 시수 적용 완료!',
+      alertDesc: '학급별 과목명 및 목표 시수가 성공적으로 계산 및 적용되었습니다.'
+    },
+    'tabDisplay': {
+      btnText: '⚡ 4. 표시옵션 적용 및 달력 갱신',
+      alertTitle: '표시옵션 갱신 완료!',
+      alertDesc: '달력 표기 형식 및 글자 설정이 성공적으로 갱신되었습니다.'
+    }
+  };
+
+  function switchTab(e, tabId) {
+    currentActiveTabId = tabId;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    if (e && e.currentTarget) {
+      e.currentTarget.classList.add('active');
+    }
+    const pane = document.getElementById(tabId);
+    if (pane) pane.classList.add('active');
+
+    const info = tabButtonInfo[tabId];
+    const btn = document.getElementById('mainCalcBtn');
+    if (btn && info) {
+      btn.innerHTML = info.btnText;
+    }
+  }
+
+  function initBaseTable(customData, customMeta) {
+    const data = customData || defaultSchedule;
+    const tbody = document.querySelector('#baseTable tbody');
+    tbody.innerHTML = '';
+    for (let r = 0; r < 6; r++) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="period-label">${r + 1}</td>` + [0,1,2,3,4].map(c => `
+        <td><input id="base_${r}_${c}" value="${(data[r] && data[r][c]) ? data[r][c] : ''}" onchange="updateMetaInputs(); autoSaveAndRecalculate();"></td>
+      `).join('');
+      tbody.appendChild(tr);
+    }
+    updateMetaInputs(customMeta);
+  }
+
+  function clearBaseTable() {
+    if (confirm('기초시간표를 모두 비우시겠습니까?')) {
+      for (let r = 0; r < 6; r++) {
+        for (let c = 0; c < 5; c++) {
+          const el = document.getElementById(`base_${r}_${c}`);
+          if (el) el.value = '';
+        }
+      }
+      updateMetaInputs();
+      autoSaveAndRecalculate();
+    }
+  }
+
+  function resetDefaultBaseTable() {
+    if (confirm('기초시간표를 기본값으로 되돌리시겠습니까?')) {
+      initBaseTable(defaultSchedule);
+      autoSaveAndRecalculate();
+    }
+  }
+
+  function updateMetaInputs(customMeta) {
+    const classes = new Set();
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 5; c++) {
+        const el = document.getElementById(`base_${r}_${c}`);
+        if (!el) continue;
+        let val = el.value.replace(/[()]/g, '').trim();
+        if (val) classes.add(val);
+      }
+    }
+
+    const currentValues = {};
+    document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+      const cls = tr.getAttribute('data-class');
+      const subjEl = document.getElementById(`subj_${cls}`);
+      const totalEl = document.getElementById(`total_${cls}`);
+      if (cls && (subjEl || totalEl)) {
+        currentValues[cls] = {
+          subj: subjEl ? subjEl.value : '',
+          total: totalEl ? parseInt(totalEl.value, 10) || 0 : 0
+        };
+      }
+    });
+
+    // 로컬 스토리지에 저장된 이전 과목/시수 불러오기
+    let savedMeta = {};
+    try {
+      const raw = localStorage.getItem('timetable_custom_metaMap');
+      if (raw) savedMeta = JSON.parse(raw);
+    } catch (e) {}
+
+    const tbody = document.getElementById('targetTableBody');
+    tbody.innerHTML = '';
+
+    const classFilter = document.getElementById('classFilter');
+    const selectedFilter = classFilter ? classFilter.value : 'ALL';
+    if (classFilter) classFilter.innerHTML = '<option value="ALL">전체 보기</option>';
+
+    Array.from(classes).sort().forEach(cls => {
+      if (classFilter) {
+        const opt = document.createElement('option');
+        opt.value = cls;
+        opt.textContent = `${cls} 학급`;
+        if (cls === selectedFilter) opt.selected = true;
+        classFilter.appendChild(opt);
+      }
+
+      // 우선순위: 전달된 customMeta > 현재 입력값 > 로컬스토리지 저장값 > 기본값
+      const existing = (customMeta && customMeta[cls])
+        || currentValues[cls]
+        || savedMeta[cls]
+        || defaultMeta[cls]
+        || { subj: '', total: 35 };
+
+      const subj = (existing && existing.subj !== undefined) ? existing.subj : (defaultMeta[cls]?.subj || '');
+      const total = (existing && existing.total !== undefined) ? existing.total : (defaultMeta[cls]?.total || 35);
+
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-class', cls);
+      tr.innerHTML = `
+        <td><span class="class-tag">${cls}</span></td>
+        <td><input type="text" id="subj_${cls}" value="${subj}" placeholder="과목명" onchange="persistMetaInputs(); autoSaveAndRecalculate();"></td>
+        <td><input type="number" id="total_${cls}" value="${total}" min="1" max="200" onchange="persistMetaInputs(); autoSaveAndRecalculate();"></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    persistMetaInputs();
+  }
+
+  function persistMetaInputs() {
+    const metaMap = {};
+    document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+      const cls = tr.getAttribute('data-class');
+      const subjEl = document.getElementById(`subj_${cls}`);
+      const totalEl = document.getElementById(`total_${cls}`);
+      if (cls && (subjEl || totalEl)) {
+        metaMap[cls] = {
+          subj: subjEl ? subjEl.value : '',
+          total: totalEl ? parseInt(totalEl.value, 10) || 0 : 0
+        };
+      }
+    });
+    try {
+      localStorage.setItem('timetable_custom_metaMap', JSON.stringify(metaMap));
+    } catch (e) {}
+  }
+
+  /* =========================================================
+     🎯 과목 및 목표 시수 제어 관련 추가 함수 (기본값 설정/복원/저장)
+     ========================================================= */
+  
+  // 모든 학급의 과목명을 지우고 목표 시수를 35로 초기화합니다.
+  function clearMetaInputs() {
+    if (confirm('모든 학급의 과목명과 목표 시수 설정을 초기화하시겠습니까?')) {
+      document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+        const cls = tr.getAttribute('data-class');
+        const subjEl = document.getElementById(`subj_${cls}`);
+        const totalEl = document.getElementById(`total_${cls}`);
+        if (subjEl) subjEl.value = '';
+        if (totalEl) totalEl.value = '35'; // 35시수를 기본값으로 지정
+      });
+      persistMetaInputs();
+      autoSaveAndRecalculate();
+    }
+  }
+
+  // 최초 내장된 기본 과목 및 시수 설정(defaultMeta)으로 복원합니다.
+  function resetDefaultMeta() {
+    if (confirm('최초 내장된 기본 과목명 및 시수 설정으로 복원하시겠습니까?')) {
+      document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+        const cls = tr.getAttribute('data-class');
+        const subjEl = document.getElementById(`subj_${cls}`);
+        const totalEl = document.getElementById(`total_${cls}`);
+        const defaultVal = defaultMeta[cls] || { subj: '', total: 35 };
+        if (subjEl) subjEl.value = defaultVal.subj;
+        if (totalEl) totalEl.value = defaultVal.total;
+      });
+      persistMetaInputs();
+      autoSaveAndRecalculate();
+    }
+  }
+
+  // 현재 입력된 과목 및 시수 설정을 나만의 기본값으로 브라우저(LocalStorage)에 저장합니다.
+  function saveUserDefaultMeta() {
+    const metaMap = {};
+    document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+      const cls = tr.getAttribute('data-class');
+      const subjEl = document.getElementById(`subj_${cls}`);
+      const totalEl = document.getElementById(`total_${cls}`);
+      if (cls && (subjEl || totalEl)) {
+        metaMap[cls] = {
+          subj: subjEl ? subjEl.value.trim() : '',
+          total: totalEl ? parseInt(totalEl.value, 10) || 0 : 0
+        };
+      }
+    });
+    try {
+      localStorage.setItem('timetable_user_default_meta', JSON.stringify(metaMap));
+      alert('현재 과목 및 시수 설정이 나만의 기본값으로 브라우저에 성공적으로 저장되었습니다.');
+    } catch (e) {
+      console.error('사용자 기본값 저장 실패:', e);
+      alert('저장 도중 오류가 발생했습니다.');
+    }
+  }
+
+  // 저장해둔 나만의 기본값을 불러와 화면의 입력 필드에 적용합니다.
+  function loadUserDefaultMeta() {
+    try {
+      const raw = localStorage.getItem('timetable_user_default_meta');
+      if (!raw) {
+        alert('저장된 나만의 기본값 설정이 없습니다. 먼저 현재 과목/시수를 설정한 뒤 [현재 설정 저장]을 클릭해 주세요.');
+        return;
+      }
+      const saved = JSON.parse(raw);
+      if (!saved) return;
+
+      if (confirm('저장된 나만의 기본값 설정을 불러오시겠습니까? 현재 입력된 값들이 모두 덮어씌워집니다.')) {
+        document.querySelectorAll('#targetTableBody tr').forEach(tr => {
+          const cls = tr.getAttribute('data-class');
+          const subjEl = document.getElementById(`subj_${cls}`);
+          const totalEl = document.getElementById(`total_${cls}`);
+          const existing = saved[cls];
+          if (existing) {
+            if (subjEl) subjEl.value = existing.subj || '';
+            if (totalEl) totalEl.value = existing.total || 35;
+          } else {
+            // 저장된 기록에 학급 정보가 없을 경우 빈 값으로 리셋
+            if (subjEl) subjEl.value = '';
+            if (totalEl) totalEl.value = '35';
+          }
+        });
+        persistMetaInputs();
+        autoSaveAndRecalculate();
+        alert('나만의 기본값 설정을 성공적으로 불러왔습니다.');
+      }
+    } catch (e) {
+      console.error('사용자 기본값 불러오기 실패:', e);
+      alert('설정을 불러오는 도중 오류가 발생했습니다.');
+    }
+  }
+
+  function parseHolidays() {
+    const raw = document.getElementById('holidays').value.split('\n');
+    const holidayMap = {};
+    raw.forEach(line => {
+      const parts = line.split(':');
+      if (parts[0]) {
+        const dStr = parts[0].trim();
+        const reason = parts[1] ? parts[1].trim() : '휴업일';
+        if (dStr) holidayMap[dStr] = reason;
+      }
+    });
+    return holidayMap;
+  }
+
+  function calculateAndRender(isManualClick = false) {
+    const startDateVal = document.getElementById('startDate').value;
+    const endDateVal = document.getElementById('endDate').value;
+    if (!startDateVal || !endDateVal) {
+      alert('개학일과 종업일을 올바르게 선택해주세요.');
+      return;
+    }
+
+    const startDate = parseDate(startDateVal);
+    const endDate = parseDate(endDateVal);
+    const holidayMap = parseHolidays();
+    const displayFormat = document.getElementById('displayFormat').value;
+
+    const baseGrid = [];
+    for (let r = 0; r < 6; r++) {
+      baseGrid[r] = [];
+      for (let c = 0; c < 5; c++) {
+        const el = document.getElementById(`base_${r}_${c}`);
+        baseGrid[r][c] = el ? el.value.trim() : '';
+      }
+    }
+
+    const metaMap = {};
+    let totalTargetHours = 0;
+    document.querySelectorAll('[id^="total_"]').forEach(el => {
+      const cls = el.id.replace('total_', '');
+      const subjEl = document.getElementById(`subj_${cls}`);
+      const subj = subjEl ? subjEl.value.trim() : '';
+      const total = parseInt(el.value, 10) || 0;
+      metaMap[cls] = { subj, total };
+      totalTargetHours += total;
+    });
+
+    const currentCounts = {};
+    Object.keys(metaMap).forEach(k => currentCounts[k] = 0);
+
+    generatedCalendar = {};
+    let cur = new Date(startDate.getTime());
+
+    while (cur <= endDate) {
+      const dayOfWeek = cur.getDay();
+      const dateStr = formatDate(cur);
+
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        const colIdx = dayOfWeek - 1;
+        const holidayReason = holidayMap[dateStr];
+
+        if (holidayReason) {
+          generatedCalendar[dateStr] = {
+            slots: [],
+            note: holidayReason,
+            highlight: '',
+            isHoliday: true,
+            dayOfWeek
+          };
+        } else {
+          const slots = [];
+          for (let r = 0; r < 6; r++) {
+            const raw = baseGrid[r][colIdx];
+            if (!raw) continue;
+
+            const cls = raw.replace(/[()]/g, '').trim();
+            const meta = metaMap[cls] || { subj: '', total: 0 };
+            const currentCount = currentCounts[cls] || 0;
+
+            // 목표 시수를 모두 채웠으면 이후 날짜에는 달력에 추가 편성하지 않음
+            if (meta.total > 0 && currentCount >= meta.total) {
+              continue;
+            }
+            
+            currentCounts[cls] = currentCount + 1;
+            const cnt = currentCounts[cls];
+
+            const subjStr = meta.subj ? ` ${meta.subj}` : '';
+            let text = '';
+            if (displayFormat === 'class_subj') {
+              text = `${cls}${subjStr}(${cnt}/${meta.total})`;
+            } else if (displayFormat === 'tag_class') {
+              text = meta.subj ? `[${meta.subj}] ${cls}(${cnt}/${meta.total})` : `${cls}(${cnt}/${meta.total})`;
+            } else if (displayFormat === 'subj_only') {
+              text = meta.subj ? `${meta.subj}(${cnt}/${meta.total})` : `${cls}(${cnt}/${meta.total})`;
+            } else {
+              text = `${cls}(${cnt}/${meta.total})`;
+            }
+            
+            slots.push({
+              period: r + 1,
+              text: text,
+              cls: cls,
+              isStrike: false
+            });
+          }
+
+          // 자동 개학식 등 학교행사 메모를 일체 추가하지 않고 오직 공휴일 및 사용자가 수동 작성한 메모만 보존
+          const override = manualOverrides[dateStr];
+          if (override) {
+            generatedCalendar[dateStr] = {
+              slots: override.slots ? override.slots : slots,
+              note: override.note || '',
+              highlight: override.highlight || '',
+              isHoliday: override.isHoliday || false,
+              dayOfWeek
+            };
+          } else {
+            generatedCalendar[dateStr] = {
+              slots,
+              note: '',
+              highlight: '',
+              isHoliday: false,
+              dayOfWeek
+            };
+          }
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    renderProgressBars(metaMap, currentCounts);
+    renderCalendarView();
+
+    if (isManualClick) {
+      saveToLocalStorage();
+      queueFirebaseSync();
+      showCompletionAlert();
+    }
+  }
+
+  function renderProgressBars(metaMap, currentCounts) {
+    const list = document.getElementById('progressList');
+    list.innerHTML = '';
+
+    let totalTarget = 0;
+    let totalDone = 0;
+
+    Object.keys(metaMap).sort().forEach(cls => {
+      const { subj, total } = metaMap[cls];
+      const count = currentCounts[cls] || 0;
+      const validCount = total > 0 ? Math.min(count, total) : count;
+      totalTarget += total;
+      totalDone += validCount;
+
+      const percent = total > 0 ? Math.min(100, Math.round((validCount / total) * 100)) : 0;
+      const isComplete = validCount >= total && total > 0;
+
+      const item = document.createElement('div');
+      item.className = 'progress-item';
+      item.innerHTML = `
+        <span style="min-width: 65px; font-weight:800;">${cls} <span style="font-size:10px; color:var(--text-muted); font-weight:normal;">${subj}</span></span>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill ${isComplete ? 'complete' : ''}" style="width: ${percent}%;"></div>
+        </div>
+        <span style="min-width: 60px; text-align:right; font-weight:700; color:${isComplete ? '#059669' : '#1e293b'};">
+          ${validCount}/${total} (${percent}%)
+        </span>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  function renderCalendarView() {
+    const year = currentViewDate.getFullYear();
+    const month = currentViewDate.getMonth();
+
+    syncYearMonthDropdowns();
+
+    const tbody = document.getElementById('calendarBody');
+    tbody.innerHTML = '';
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    const filterClass = document.getElementById('classFilter').value;
+    const showPeriodNumber = document.getElementById('showPeriodNumber').checked;
+    const todayStr = formatDate(new Date());
+
+    let monthSchoolDays = 0;
+    let monthTotalSlots = 0;
+    let monthHolidays = 0;
+
+    let cur = new Date(year, month, 1);
+    let startDayOfWeek = cur.getDay();
+    let offset = (startDayOfWeek === 0 ? -6 : 1) - startDayOfWeek;
+    cur.setDate(cur.getDate() + offset);
+
+    while (cur <= lastDay || cur.getDay() !== 1) {
+      let tr = document.createElement('tr');
+      let hasCurrentMonthDayInWeek = false;
+
+      for (let i = 0; i < 7; i++) {
+        const dayOfWeek = cur.getDay();
+        const dStr = formatDate(cur);
+        const isCurMonth = cur.getMonth() === month;
+        const dayNum = cur.getDate();
+
+        if (isCurMonth && dayOfWeek >= 1 && dayOfWeek <= 5) {
+          hasCurrentMonthDayInWeek = true;
+        }
+
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          const td = document.createElement('td');
+          const cell = document.createElement('div');
+          cell.className = 'day-cell';
+
+          if (!isCurMonth) {
+            cell.classList.add('other-month');
+            cell.innerHTML = `
+              <div class="cell-header">
+                <span class="date-badge">${dayNum}</span>
+              </div>
+            `;
+          } else {
+            const isToday = (dStr === todayStr);
+            if (isToday) cell.classList.add('today-cell');
+
+            const data = generatedCalendar[dStr] || { slots: [], note: '', highlight: '', isHoliday: false };
+            
+            if (data.highlight) cell.classList.add(data.highlight);
+            if (data.isHoliday) {
+              cell.classList.add('holiday');
+              monthHolidays++;
+            } else {
+              monthSchoolDays++;
+            }
+
+            let validSlotsCount = 0;
+            let slotHtml = '';
+
+            if (data.isHoliday) {
+              slotHtml = `<div class="holiday-badge">${data.note || '휴업일'}</div>`;
+            } else {
+              slotHtml = (data.slots || []).map(s => {
+                let text = typeof s === 'string' ? s : s.text;
+                let period = typeof s === 'object' ? s.period : null;
+                let isStrike = (typeof s === 'string' && s.startsWith('-')) || (typeof s === 'object' && s.isStrike);
+                let displayText = (typeof s === 'string' && s.startsWith('-')) ? text.substring(1) : text;
+
+                if (!isStrike) {
+                  validSlotsCount++;
+                  monthTotalSlots++;
+                }
+
+                let isFiltered = false;
+                let isDimmed = false;
+                if (filterClass !== 'ALL') {
+                  if (displayText.includes(filterClass)) {
+                    isFiltered = true;
+                  } else {
+                    isDimmed = true;
+                  }
+                }
+
+                const periodBadge = (showPeriodNumber && period) ? `<span class="period-num">${period}</span>` : '';
+                return `
+                  <div class="slot-item ${isStrike ? 'strike' : ''} ${isFiltered ? 'filtered-match' : ''} ${isDimmed ? 'dimmed' : ''}">
+                    ${periodBadge}
+                    <span>${displayText}</span>
+                  </div>
+                `;
+              }).join('');
+            }
+
+            const periodCountText = (!data.isHoliday && validSlotsCount > 0) ? `${validSlotsCount}시수` : '';
+
+            cell.innerHTML = `
+              <div class="cell-header">
+                <span class="date-badge ${data.isHoliday ? 'red' : ''}">
+                  ${dayNum}
+                  ${isToday ? '<span class="today-tag">오늘</span>' : ''}
+                </span>
+                <span class="day-period-count">${periodCountText}</span>
+              </div>
+              <div class="slots-wrapper">${slotHtml}</div>
+              ${(data.note && !data.isHoliday) ? `<div class="slot-note">📌 ${data.note}</div>` : ''}
+            `;
+            cell.onclick = () => openModal(dStr, dayNum);
+          }
+
+          td.appendChild(cell);
+          tr.appendChild(td);
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      if (hasCurrentMonthDayInWeek) {
+        tbody.appendChild(tr);
+      }
+
+      if (cur > lastDay && cur.getDay() === 1) break;
+    }
+
+    // 상단 헤더 통계 업데이트
+    document.getElementById('statSchoolDays').innerText = `${monthSchoolDays}일`;
+    document.getElementById('statTotalSlots').innerText = `${monthTotalSlots}시간`;
+    document.getElementById('statHolidays').innerText = `${monthHolidays}일`;
+  }
+
+  function changeMonth(delta) {
+    currentViewDate.setMonth(currentViewDate.getMonth() + delta);
+    renderCalendarView();
+  }
+
+  function goToTodayMonth() {
+    const now = new Date();
+    currentViewDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    renderCalendarView();
+  }
+
+  function goToCurrentSemesterStart() {
+    const startDate = parseDate(document.getElementById('startDate').value);
+    currentViewDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    renderCalendarView();
+  }
+
+  function openModal(dateStr, dayNum) {
+    activeModalDate = dateStr;
+    const data = generatedCalendar[dateStr] || { slots: [], note: '', highlight: '', isHoliday: false };
+    
+    document.getElementById('modalTitle').innerText = `✏️ ${dateStr} (${dayNum}일) 시간표 수정`;
+
+    const slotLines = (data.slots || []).map(s => {
+      if (typeof s === 'string') return s;
+      return (s.isStrike ? '-' : '') + (s.text || '');
+    });
+
+    document.getElementById('modalSlots').value = slotLines.join('\n');
+    document.getElementById('modalNote').value = data.note || '';
+    
+    selectModalHighlight(data.highlight || '');
+    document.getElementById('modalWrap').style.display = 'flex';
+  }
+
+  function selectModalHighlight(colorClass) {
+    selectedModalColor = colorClass;
+    document.querySelectorAll('.color-opt').forEach(opt => {
+      if (opt.getAttribute('data-color') === colorClass) {
+        opt.classList.add('selected');
+      } else {
+        opt.classList.remove('selected');
+      }
+    });
+  }
+
+  function closeModal() {
+    document.getElementById('modalWrap').style.display = 'none';
+  }
+
+  function saveCellEdit() {
+    if (!activeModalDate) return;
+
+    const rawSlots = document.getElementById('modalSlots').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const note = document.getElementById('modalNote').value.trim();
+    const highlight = selectedModalColor;
+
+    const slots = rawSlots.map((s, idx) => {
+      const isStrike = s.startsWith('-');
+      const text = isStrike ? s.substring(1).trim() : s;
+      return {
+        period: idx + 1,
+        text: text,
+        isStrike: isStrike
+      };
+    });
+
+    manualOverrides[activeModalDate] = {
+      slots,
+      note,
+      highlight
+    };
+
+    if (generatedCalendar[activeModalDate]) {
+      generatedCalendar[activeModalDate].slots = slots;
+      generatedCalendar[activeModalDate].note = note;
+      generatedCalendar[activeModalDate].highlight = highlight;
+    }
+
+    closeModal();
+    renderCalendarView();
+    saveToLocalStorage();
+    queueFirebaseSync();
+  }
+
+  function resetCellToDefault() {
+    if (!activeModalDate) return;
+    if (confirm(`${activeModalDate} 일자의 수동 수정을 삭제하고 자동 계산 시간표로 되돌리시겠습니까?`)) {
+      delete manualOverrides[activeModalDate];
+      closeModal();
+      calculateAndRender(false);
+      saveToLocalStorage();
+      queueFirebaseSync();
+    }
+  }
+
+  function autoSaveAndRecalculate() {
+    calculateAndRender(false);
+    saveToLocalStorage();
+    queueFirebaseSync();
+  }
+
+  function getAppState() {
+    const baseGrid = [];
+    for (let r = 0; r < 6; r++) {
+      baseGrid[r] = [];
+      for (let c = 0; c < 5; c++) {
+        const el = document.getElementById(`base_${r}_${c}`);
+        baseGrid[r][c] = el ? el.value : '';
+      }
+    }
+
+    const metaMap = {};
+    document.querySelectorAll('[id^="total_"]').forEach(el => {
+      const cls = el.id.replace('total_', '');
+      const subjEl = document.getElementById(`subj_${cls}`);
+      metaMap[cls] = {
+        subj: subjEl ? subjEl.value : '',
+        total: parseInt(el.value, 10) || 0
+      };
+    });
+
+    return {
+      version: '2026_exact_school_schedule_v11',
+      // 실시간으로 시간을 생성하지 않고, 상태가 실제 변경된 시각(lastUpdatedAt)을 반환합니다.
+      updatedAt: lastUpdatedAt,
+      // 현재 저장 시점의 웹앱 타이틀 제목 텍스트를 저장합니다.
+      appTitle: document.getElementById('appTitleText').innerText.trim(),
+      startDate: document.getElementById('startDate').value,
+      endDate: document.getElementById('endDate').value,
+      holidays: document.getElementById('holidays').value,
+      displayFormat: document.getElementById('displayFormat').value,
+      showPeriodNumber: document.getElementById('showPeriodNumber').checked,
+      baseGrid,
+      metaMap,
+      manualOverrides
+    };
+  }
+
+  function saveToLocalStorage() {
+    try {
+      // 리모트(Firebase) 데이터 적용 중이 아닐 때(즉, 로컬 사용자가 입력을 바꿨을 때)만 최종 수정 시간을 갱신합니다.
+      if (!isReceivingRemoteUpdate) {
+        lastUpdatedAt = new Date().toISOString();
+      }
+      const state = getAppState();
+      localStorage.setItem('timetable_schedule_state_firebase', JSON.stringify(state));
+    } catch (e) {
+      console.warn('LocalStorage 저장 실패:', e);
+    }
+  }
+
+  function loadFromLocalStorage() {
+    try {
+      const raw = localStorage.getItem('timetable_schedule_state_firebase');
+      if (!raw) return false;
+      const state = JSON.parse(raw);
+      if (!state) return false;
+      applyAppState(state);
+      return true;
+    } catch (e) {
+      console.error('LocalStorage 복원 실패:', e);
+      return false;
+    }
+  }
+
+  function applyAppState(state) {
+    if (!state) return;
+    // 불러온 데이터의 최종 수정 시각을 로컬 변수에도 동기화하여 정합성을 일치시킵니다.
+    if (state.updatedAt) {
+      lastUpdatedAt = state.updatedAt;
+    }
+    // 시간표 제목 복원 및 설정 탭 입력 필드 동기화
+    if (state.appTitle) {
+      document.getElementById('appTitleText').innerText = state.appTitle;
+      const titleInput = document.getElementById('appTitleInput');
+      if (titleInput) titleInput.value = state.appTitle;
+    }
+    if (state.startDate) document.getElementById('startDate').value = state.startDate;
+    if (state.endDate) document.getElementById('endDate').value = state.endDate;
+    if (state.holidays) document.getElementById('holidays').value = state.holidays;
+    if (state.displayFormat) document.getElementById('displayFormat').value = state.displayFormat;
+    if (state.showPeriodNumber !== undefined) document.getElementById('showPeriodNumber').checked = state.showPeriodNumber;
+
+    if (state.baseGrid) {
+      initBaseTable(state.baseGrid, state.metaMap);
+    } else if (state.metaMap) {
+      updateMetaInputs(state.metaMap);
+    }
+
+    if (state.metaMap) {
+      Object.keys(state.metaMap).forEach(cls => {
+        const subjEl = document.getElementById(`subj_${cls}`);
+        const totalEl = document.getElementById(`total_${cls}`);
+        if (subjEl && state.metaMap[cls].subj !== undefined) subjEl.value = state.metaMap[cls].subj;
+        if (totalEl && state.metaMap[cls].total !== undefined) totalEl.value = state.metaMap[cls].total;
+      });
+      persistMetaInputs();
+    }
+
+    if (state.manualOverrides) {
+      manualOverrides = state.manualOverrides;
+    }
+
+    if (state.startDate) {
+      const start = parseDate(state.startDate);
+      currentViewDate = new Date(start.getFullYear(), start.getMonth(), 1);
+      syncYearMonthDropdowns();
+    }
+  }
+
+  /* =========================================================
+     🔥 Firebase Firestore 백엔드 자동 동기화 모듈
+     ========================================================= */
+  function initFirebase(config, docId) {
+    if (typeof firebase === 'undefined') {
+      console.warn('Firebase SDK가 로드되지 않았습니다.');
+      return;
+    }
+
+    try {
+      if (!firebase.apps.length) {
+        fbApp = firebase.initializeApp(config);
+      } else {
+        fbApp = firebase.app();
+      }
+
+      fbDb = firebase.firestore();
+      setupFirebaseRealtimeListener(docId);
+    } catch (err) {
+      console.error('Firebase 초기화:', err);
+      return false;
+    }
+  }
+
+  function setupFirebaseRealtimeListener(docId) {
+    if (!fbDb) return;
+    if (fbUnsubscribe) fbUnsubscribe();
+
+    const targetDocId = docId || '2026_noam_2nd_semester';
+    const docRef = fbDb.collection('timetables').doc(targetDocId);
+
+    fbUnsubscribe = docRef.onSnapshot((doc) => {
+      if (doc.exists) {
+        const remoteData = doc.data();
+        const currentData = getAppState();
+
+        // 수신 중인 상태가 아닐 때만 정합성을 체크하여 동기화를 진행합니다.
+        if (remoteData && !isReceivingRemoteUpdate) {
+          const remoteTime = remoteData.updatedAt ? new Date(remoteData.updatedAt).getTime() : 0;
+          const localTime = lastUpdatedAt ? new Date(lastUpdatedAt).getTime() : 0;
+
+          if (remoteTime > localTime) {
+            // 1. 원격(Firebase) 데이터가 더 최신인 경우: 로컬 상태를 원격 데이터로 덮어씁니다.
+            isReceivingRemoteUpdate = true;
+            applyAppState(remoteData);
+            calculateAndRender(false);
+            saveToLocalStorage();
+            setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
+          } else if (remoteTime < localTime) {
+            // 2. 로컬 데이터가 더 최신인 경우: 원격(Firebase) 데이터를 현재 최신 로컬 데이터로 동기화 업로드합니다.
+            queueFirebaseSync();
+          }
+        }
+      }
+    }, (error) => {
+      console.warn('Firebase 리스너:', error);
+    });
+  }
+
+  function queueFirebaseSync() {
+    if (!fbDb || isReceivingRemoteUpdate) return;
+    if (fbSyncDebounceTimer) clearTimeout(fbSyncDebounceTimer);
+    fbSyncDebounceTimer = setTimeout(() => {
+      saveStateToFirebase();
+    }, 800);
+  }
+
+  async function saveStateToFirebase() {
+    if (!fbDb) return false;
+    const docId = '2026_noam_2nd_semester';
+    const state = getAppState();
+
+    try {
+      await fbDb.collection('timetables').doc(docId).set(state);
+      return true;
+    } catch (err) {
+      console.error('Firebase 저장:', err);
+      return false;
+    }
+  }
+
+  function showCompletionAlert() {
+    const info = tabButtonInfo[currentActiveTabId] || tabButtonInfo['tabSchedule'];
+    const titleEl = document.getElementById('completionModalTitle');
+    const descEl = document.getElementById('completionModalDesc');
+    if (titleEl) titleEl.innerText = info.alertTitle;
+    if (descEl) descEl.innerText = info.alertDesc;
+
+    const modal = document.getElementById('completionModalWrap');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  function closeCompletionAlert() {
+    const modal = document.getElementById('completionModalWrap');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      closeCompletionAlert();
+    }
+  });
+
+  // 초기 시작
+  window.addEventListener('DOMContentLoaded', () => {
+    initYearMonthDropdowns();
+
+    const savedFontScale = localStorage.getItem('timetable_font_scale');
+    if (savedFontScale) {
+      setFontSizeScale(parseInt(savedFontScale, 10));
+    } else {
+      setFontSizeScale(100);
+    }
+
+    const loaded = loadFromLocalStorage();
+    if (!loaded) {
+      document.getElementById('startDate').value = '2026-08-18';
+      document.getElementById('endDate').value = '2026-12-31';
+      document.getElementById('holidays').value = getHolidaysForYearAndSemester(2026, 2);
+      initBaseTable(defaultSchedule);
+    }
+    
+    syncYearMonthDropdowns();
+    calculateAndRender(false);
+
+    // Firebase 백그라운드 자동 연결
+    initFirebase(defaultFirebaseConfig, '2026_noam_2nd_semester');
+  });
+</script>
+</body>
+</html>
