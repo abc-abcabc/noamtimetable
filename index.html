@@ -2863,19 +2863,13 @@
 
         // 수신 중인 상태가 아닐 때만 정합성을 체크하여 동기화를 진행합니다.
         if (remoteData && !isReceivingRemoteUpdate) {
-          const remoteTime = remoteData.updatedAt ? new Date(remoteData.updatedAt).getTime() : 0;
-          const localTime = lastUpdatedAt ? new Date(lastUpdatedAt).getTime() : 0;
-
-          if (remoteTime > localTime) {
-            // 1. 원격(Firebase) 데이터가 더 최신인 경우: 로컬 상태를 원격 데이터로 덮어씁니다.
+          if (remoteData.updatedAt && remoteData.updatedAt !== lastUpdatedAt) {
+            // 원격 데이터가 로컬 데이터와 다르면 즉시 덮어씁니다.
             isReceivingRemoteUpdate = true;
             applyAppState(remoteData);
             calculateAndRender(false);
             saveToLocalStorage();
             setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
-          } else if (remoteTime < localTime) {
-            // 2. 로컬 데이터가 더 최신인 경우: 원격(Firebase) 데이터를 현재 최신 로컬 데이터로 동기화 업로드합니다.
-            queueFirebaseSync();
           }
         }
       }
