@@ -1269,16 +1269,16 @@
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
         <div>
           <label for="startDate">개학일</label>
-          <input type="date" id="startDate" value="2026-08-18" onchange="onStartDateChange()">
+          <input type="date" id="startDate" value="2026-08-18" onchange="onStartDateChange()" oninput="onStartDateChange()">
         </div>
         <div>
           <label for="classStartDate">내 수업시작일</label>
-          <input type="date" id="classStartDate" value="2026-08-18" onchange="autoSaveAndRecalculate()">
+          <input type="date" id="classStartDate" value="2026-08-18" onchange="autoSaveAndRecalculate()" oninput="autoSaveAndRecalculate()">
         </div>
       </div>
       <div style="margin-top: 6px;">
         <label for="endDate">방학식 / 졸업식</label>
-        <input type="date" id="endDate" value="2026-12-31" onchange="autoSaveAndRecalculate()">
+        <input type="date" id="endDate" value="2026-12-31" onchange="autoSaveAndRecalculate()" oninput="autoSaveAndRecalculate()">
       </div>
       
       <div class="holiday-input-group">
