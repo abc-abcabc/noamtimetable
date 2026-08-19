@@ -1618,7 +1618,22 @@
     ["", "", "", "", ""]
   ];
 
-  const defaultMeta = {
+  const defaultMeta1 = {
+    "1난": { subj: "즐생", total: 17 },
+    "1매": { subj: "즐생", total: 17 },
+    "2난": { subj: "도덕", total: 35 },
+    "2매": { subj: "도덕", total: 35 },
+    "3난": { subj: "영어", total: 35 },
+    "3매": { subj: "영어", total: 35 },
+    "4난": { subj: "영어", total: 35 },
+    "4매": { subj: "영어", total: 35 },
+    "5난": { subj: "도덕", total: 17 },
+    "5매": { subj: "도덕", total: 17 },
+    "6난": { subj: "영어", total: 35 },
+    "6매": { subj: "영어", total: 35 }
+  };
+
+  const defaultMeta2 = {
     "1난": { subj: "즐생", total: 34 },
     "1매": { subj: "즐생", total: 34 },
     "2난": { subj: "도덕", total: 17 },
@@ -1632,6 +1647,8 @@
     "6난": { subj: "영어", total: 34 },
     "6매": { subj: "영어", total: 34 }
   };
+
+  const defaultMeta = defaultMeta2;
 
   let generatedCalendar = {};
   let manualOverrides = {};
@@ -1846,14 +1863,33 @@
       document.getElementById('endDate').value = `${currentYear}-07-23`;
       document.getElementById('holidays').value = getHolidaysForYearAndSemester(currentYear, 1);
       currentViewDate = new Date(currentYear, 2, 1);
+
+      // 1학기 과목 및 목표 시수 강제 세팅
+      updateMetaInputs(defaultMeta1);
+      Object.keys(defaultMeta1).forEach(cls => {
+        const subjEl = document.getElementById(`subj_${cls}`);
+        const totalEl = document.getElementById(`total_${cls}`);
+        if (subjEl) subjEl.value = defaultMeta1[cls].subj;
+        if (totalEl) totalEl.value = defaultMeta1[cls].total;
+      });
     } else {
       document.getElementById('startDate').value = `${currentYear}-08-18`;
       document.getElementById('classStartDate').value = `${currentYear}-08-18`;
       document.getElementById('endDate').value = `${currentYear}-12-31`;
       document.getElementById('holidays').value = getHolidaysForYearAndSemester(currentYear, 2);
       currentViewDate = new Date(currentYear, 7, 1);
+
+      // 2학기 과목 및 목표 시수 강제 세팅
+      updateMetaInputs(defaultMeta2);
+      Object.keys(defaultMeta2).forEach(cls => {
+        const subjEl = document.getElementById(`subj_${cls}`);
+        const totalEl = document.getElementById(`total_${cls}`);
+        if (subjEl) subjEl.value = defaultMeta2[cls].subj;
+        if (totalEl) totalEl.value = defaultMeta2[cls].total;
+      });
     }
 
+    persistMetaInputs();
     updateSemesterButtonState(semNum);
     syncYearMonthDropdowns();
     autoSaveAndRecalculate();
