@@ -166,6 +166,33 @@
       border: 1px solid var(--hairline);
       letter-spacing: -0.01em;
     }
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      margin-left: 6px;
+      vertical-align: middle;
+      transition: all 0.2s ease;
+      letter-spacing: -0.01em;
+    }
+    .sync-badge.badge-connected {
+      background: #ecfdf5;
+      color: #059669;
+      border: 1px solid #a7f3d0;
+    }
+    .sync-badge.badge-disconnected {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+    .sync-badge.badge-connecting {
+      background: #fffbeb;
+      color: #d97706;
+      border: 1px solid #fde68a;
+    }
 
     /* 요약 통계 카드 그룹 (Apple Capsule Stat Cards) */
     .header-summary-group {
@@ -1224,6 +1251,7 @@
       <h1>
         <span id="appTitleText" class="editable-title" contenteditable="true" onblur="onTitleBlur(this.innerText)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" title="시간표 제목을 직접 클릭해서 수정해 보세요!">전담시간표(영어,즐생,도덕)</span>
         <span class="year-badge" id="headerYearBadge">2026학년도</span>
+        <span id="syncBadge" class="sync-badge badge-connecting">☁️ 클라우드 연결 중...</span>
       </h1>
     </div>
   </div>
@@ -2819,9 +2847,20 @@
   /* =========================================================
      🔥 Firebase Firestore 백엔드 자동 동기화 모듈
      ========================================================= */
+  function updateSyncStatus(status, message) {
+    const badge = document.getElementById('syncBadge');
+    if (!badge) return;
+    badge.className = 'sync-badge ' + (
+      status === 'connected' ? 'badge-connected' :
+      status === 'disconnected' ? 'badge-disconnected' : 'badge-connecting'
+    );
+    badge.textContent = message;
+  }
+
   function initFirebase(config, docId) {
     if (typeof firebase === 'undefined') {
       console.warn('Firebase SDK가 로드되지 않았습니다.');
+      updateSyncStatus('disconnected', '☁️ 클라우드 로드 실패 (SDK 누락)');
       return;
     }
 
@@ -2833,9 +2872,11 @@
       }
 
       fbDb = firebase.firestore();
+      updateSyncStatus('connected', '☁️ 실시간 클라우드 연결됨');
       setupFirebaseRealtimeListener(docId);
     } catch (err) {
       console.error('Firebase 초기화:', err);
+      updateSyncStatus('disconnected', '☁️ 클라우드 연결 실패');
       return false;
     }
   }
@@ -2872,16 +2913,19 @@
             calculateAndRender(false);
             saveToLocalStorage();
             setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
+            updateSyncStatus('connected', '☁️ 실시간 클라우드 동기화 완료');
           }
         }
       }
     }, (error) => {
       console.warn('Firebase 리스너:', error);
+      updateSyncStatus('disconnected', '☁️ 클라우드 연결 대기 (방화벽/네트워크 확인)');
     });
   }
 
   function queueFirebaseSync() {
     if (!fbDb || isReceivingRemoteUpdate) return;
+    updateSyncStatus('connecting', '☁️ 클라우드 동기화 중...');
     if (fbSyncDebounceTimer) clearTimeout(fbSyncDebounceTimer);
     fbSyncDebounceTimer = setTimeout(() => {
       saveStateToFirebase();
@@ -2895,9 +2939,11 @@
 
     try {
       await fbDb.collection('timetables').doc(docId).set(state);
+      updateSyncStatus('connected', '☁️ 실시간 클라우드 동기화 완료');
       return true;
     } catch (err) {
       console.error('Firebase 저장:', err);
+      updateSyncStatus('disconnected', '☁️ 클라우드 저장 실패 (권한/네트워크)');
       return false;
     }
   }
