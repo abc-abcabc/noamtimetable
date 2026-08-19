@@ -1843,10 +1843,12 @@
     currentViewDate = new Date(year, start.getMonth(), 1);
     syncYearMonthDropdowns();
 
-    // 수업 시작일이 비어있거나 기존 개학일과 동일했던 경우 함께 동기화
+    // 수업 시작일이 비어있거나 개학일보다 이전 날짜인 경우 개학일에 맞추어 자동 동기화
     const classStartEl = document.getElementById('classStartDate');
-    if (classStartEl && !classStartEl.value) {
-      classStartEl.value = startVal;
+    if (classStartEl) {
+      if (!classStartEl.value || parseDate(classStartEl.value) < start) {
+        classStartEl.value = startVal;
+      }
     }
 
     syncSemesterButtonFromDates();
