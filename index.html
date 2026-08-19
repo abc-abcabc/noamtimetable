@@ -245,6 +245,36 @@
       flex-shrink: 0;
       border: 1px solid var(--hairline-light);
     }
+    /* 플로팅 토스트 메시지 스타일 */
+    .toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast-msg {
+      background: rgba(29, 29, 31, 0.9);
+      color: #ffffff;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+      animation: toastFadeIn 0.25s ease forwards;
+      border-left: 4px solid var(--primary);
+    }
+    @keyframes toastFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .tab-btn {
       padding: 7px 2px;
       border: none;
@@ -2819,6 +2849,34 @@
   /* =========================================================
      🔥 Firebase Firestore 백엔드 자동 동기화 모듈
      ========================================================= */
+  function showToast(msg, type = 'info') {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast-msg';
+    let icon = 'ℹ️';
+    if (type === 'error') {
+      icon = '⚠️';
+      toast.style.borderLeft = '4px solid #dc2626';
+    } else if (type === 'success') {
+      icon = '✅';
+      toast.style.borderLeft = '4px solid #059669';
+    }
+    toast.innerHTML = `<span>${icon}</span> <span>${msg}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px)';
+      toast.style.transition = 'all 0.25s ease';
+      setTimeout(() => toast.remove(), 250);
+    }, 3500);
+  }
+
   function initFirebase(config, docId) {
     if (typeof firebase === 'undefined') {
       console.warn('Firebase SDK가 로드되지 않았습니다.');
@@ -2872,11 +2930,13 @@
             calculateAndRender(false);
             saveToLocalStorage();
             setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
+            showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
           }
         }
       }
     }, (error) => {
       console.warn('Firebase 리스너:', error);
+      showToast('클라우드 연결 오류 발생', 'error');
     });
   }
 
@@ -2895,9 +2955,11 @@
 
     try {
       await fbDb.collection('timetables').doc(docId).set(state);
+      showToast('실시간 클라우드 저장 완료!', 'success');
       return true;
     } catch (err) {
       console.error('Firebase 저장:', err);
+      showToast('클라우드 저장 실패! (보안 규칙 또는 인터넷 확인)', 'error');
       return false;
     }
   }
