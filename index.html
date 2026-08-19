@@ -2000,8 +2000,16 @@
         || defaultMeta[cls]
         || { subj: '', total: 35 };
 
-      const subj = (existing && existing.subj !== undefined) ? existing.subj : (defaultMeta[cls]?.subj || '');
-      const total = (existing && existing.total !== undefined) ? existing.total : (defaultMeta[cls]?.total || 35);
+      let subj = (existing && existing.subj !== undefined) ? existing.subj : (defaultMeta[cls]?.subj || '');
+      let total = (existing && existing.total !== undefined) ? existing.total : (defaultMeta[cls]?.total || 35);
+
+      // 체육/음악 강제 마이그레이션 (DB/로컬 스토리지 옛 정보 유입 차단)
+      if (subj === '체육' || subj === '음악' || !subj) {
+        if (defaultMeta[cls]) {
+          subj = defaultMeta[cls].subj;
+          total = defaultMeta[cls].total;
+        }
+      }
 
       const tr = document.createElement('tr');
       tr.setAttribute('data-class', cls);
@@ -2172,8 +2180,17 @@
     document.querySelectorAll('[id^="total_"]').forEach(el => {
       const cls = el.id.replace('total_', '');
       const subjEl = document.getElementById(`subj_${cls}`);
-      const subj = subjEl ? subjEl.value.trim() : '';
-      const total = parseInt(el.value, 10) || 0;
+      let subj = subjEl ? subjEl.value.trim() : '';
+      let total = parseInt(el.value, 10) || 0;
+
+      // 체육/음악 강제 마이그레이션 (달력 시수 계산 안전망)
+      if (subj === '체육' || subj === '음악' || !subj) {
+        if (defaultMeta[cls]) {
+          subj = defaultMeta[cls].subj;
+          total = defaultMeta[cls].total;
+        }
+      }
+
       metaMap[cls] = { subj, total };
       totalTargetHours += total;
     });
@@ -2609,10 +2626,18 @@
     document.querySelectorAll('[id^="total_"]').forEach(el => {
       const cls = el.id.replace('total_', '');
       const subjEl = document.getElementById(`subj_${cls}`);
-      metaMap[cls] = {
-        subj: subjEl ? subjEl.value : '',
-        total: parseInt(el.value, 10) || 0
-      };
+      let subj = subjEl ? subjEl.value : '';
+      let total = parseInt(el.value, 10) || 0;
+
+      // 체육/음악 강제 마이그레이션 (DB 저장 시점 클렌징)
+      if (subj === '체육' || subj === '음악' || !subj) {
+        if (defaultMeta[cls]) {
+          subj = defaultMeta[cls].subj;
+          total = defaultMeta[cls].total;
+        }
+      }
+
+      metaMap[cls] = { subj, total };
     });
 
     return {
