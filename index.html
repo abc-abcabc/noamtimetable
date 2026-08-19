@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>학사일정 연동 자동 시간표 생성기</title>
+  <title>전담시간표(영어,즐생,도덕)</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   
@@ -924,7 +924,7 @@
     <div class="app-icon">📅</div>
     <div class="app-title-box">
       <h1>
-        <span id="appTitleText" class="editable-title" contenteditable="true" onblur="onTitleBlur(this.innerText)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" title="시간표 제목을 직접 클릭해서 수정해 보세요!">학사일정 연동 자동 시간표 생성기</span>
+        <span id="appTitleText" class="editable-title" contenteditable="true" onblur="onTitleBlur(this.innerText)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" title="시간표 제목을 직접 클릭해서 수정해 보세요!">전담시간표(영어,즐생,도덕)</span>
         <span class="year-badge" id="headerYearBadge">2026학년도</span>
       </h1>
     </div>
@@ -1050,7 +1050,7 @@
       <div class="section-title"><span class="badge-num">4</span> 달력 표기 및 글자 크기 설정</div>
       
       <label for="appTitleInput">시간표 제목 설정</label>
-      <input type="text" id="appTitleInput" value="학사일정 연동 자동 시간표 생성기" placeholder="시간표 제목을 입력하세요" oninput="updateAppTitleFromInput(this.value)" style="margin-bottom: 10px;">
+      <input type="text" id="appTitleInput" value="전담시간표(영어,즐생,도덕)" placeholder="시간표 제목을 입력하세요" oninput="updateAppTitleFromInput(this.value)" style="margin-bottom: 10px;">
       
       <label for="displayFormat">달력 표기 형식</label>
       <select id="displayFormat" onchange="autoSaveAndRecalculate()">
@@ -1358,9 +1358,10 @@
      ========================================================= */
   // 1. 헤더 제목(contenteditable)을 직접 마우스로 수정한 후 포커스를 잃었을 때(Blur) 호출됩니다.
   window.onTitleBlur = function(newTitle) {
-    const trimmedTitle = newTitle.trim() || '학사일정 연동 자동 시간표 생성기';
+    const trimmedTitle = newTitle.trim() || '전담시간표(영어,즐생,도덕)';
     // 빈 값 방지 및 깔끔한 텍스트 렌더링
     document.getElementById('appTitleText').innerText = trimmedTitle;
+    document.title = trimmedTitle;
     
     // 4번 설정 탭 안의 입력 상자에도 동일하게 동기화합니다.
     const titleInput = document.getElementById('appTitleInput');
@@ -1372,8 +1373,9 @@
 
   // 2. 4번 설정 탭 내의 텍스트 입력 필드에 값을 칠 때 실시간으로 상단 헤더에 연동합니다.
   window.updateAppTitleFromInput = function(newTitle) {
-    const trimmedTitle = newTitle.trim() || '학사일정 연동 자동 시간표 생성기';
+    const trimmedTitle = newTitle.trim() || '전담시간표(영어,즐생,도덕)';
     document.getElementById('appTitleText').innerText = trimmedTitle;
+    document.title = trimmedTitle;
     
     // 실시간 자동 저장 트리거
     autoSaveAndRecalculate();
@@ -2256,6 +2258,7 @@
     // 시간표 제목 복원 및 설정 탭 입력 필드 동기화
     if (state.appTitle) {
       document.getElementById('appTitleText').innerText = state.appTitle;
+      document.title = state.appTitle;
       const titleInput = document.getElementById('appTitleInput');
       if (titleInput) titleInput.value = state.appTitle;
     }
