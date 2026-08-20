@@ -2935,7 +2935,7 @@
             calculateAndRender(false);
             saveToLocalStorage();
             setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
-            showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
+            showToast('동기화 완료!', 'success');
           }
         }
       } else {
@@ -2975,7 +2975,7 @@
     try {
       await fbDb.collection('timetables').doc(docId).set(state);
       localStorage.setItem('timetable_needs_firebase_sync', 'false');
-      showToast('실시간 클라우드 저장 완료!', 'success');
+      showToast('저장 완료!', 'success');
       return true;
     } catch (err) {
       console.error('Firebase 저장:', err);
