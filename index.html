@@ -2973,11 +2973,12 @@
     const state = getAppState();
 
     try {
-      await fbDb.collection('timetables').doc(docId).set(state);
       localStorage.setItem('timetable_needs_firebase_sync', 'false');
+      await fbDb.collection('timetables').doc(docId).set(state);
       showToast('저장 완료!', 'success');
       return true;
     } catch (err) {
+      localStorage.setItem('timetable_needs_firebase_sync', 'true');
       console.error('Firebase 저장:', err);
       showToast(`클라우드 저장 실패! (${err.message || err})`, 'error');
       return false;
