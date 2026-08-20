@@ -2731,6 +2731,7 @@
       // 리모트(Firebase) 데이터 적용 중이 아닐 때(즉, 로컬 사용자가 입력을 바꿨을 때)만 최종 수정 시간을 갱신합니다.
       if (!isReceivingRemoteUpdate) {
         lastUpdatedAt = new Date().toISOString();
+        localStorage.setItem('timetable_needs_firebase_sync', 'true');
       }
       const state = getAppState();
       localStorage.setItem('timetable_schedule_state_firebase', JSON.stringify(state));
@@ -2920,24 +2921,21 @@
           }
         }
 
+        const needsSync = localStorage.getItem('timetable_needs_firebase_sync') === 'true';
+
         // 수신 중인 상태가 아닐 때만 정합성을 체크하여 동기화를 진행합니다.
         if (remoteData && !isReceivingRemoteUpdate) {
-          if (remoteData.updatedAt) {
-            if (remoteData.updatedAt > lastUpdatedAt) {
-              // 원격 데이터가 더 최근의 것이면 로컬 데이터를 덮어씁니다.
-              isReceivingRemoteUpdate = true;
-              applyAppState(remoteData);
-              calculateAndRender(false);
-              saveToLocalStorage();
-              setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
-              showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
-            } else if (remoteData.updatedAt < lastUpdatedAt) {
-              // 로컬 데이터가 더 최근의 것이면 로컬 데이터를 원격 서버에 업로드합니다.
-              queueFirebaseSync();
-            }
-          } else {
-            // 원격 데이터에 updatedAt이 없으면 로컬 데이터가 더 유효하다고 판단하여 업로드합니다.
+          if (needsSync) {
+            // 로컬에 미동기화된 변경사항이 있으면 서버 데이터를 덮어쓰지 않고 로컬 데이터를 업로드합니다.
             queueFirebaseSync();
+          } else if (remoteData.updatedAt && remoteData.updatedAt !== lastUpdatedAt) {
+            // 로컬에 미동기화된 변경사항이 없고, 서버 데이터가 로컬과 다르면 서버 데이터로 덮어씁니다.
+            isReceivingRemoteUpdate = true;
+            applyAppState(remoteData);
+            calculateAndRender(false);
+            saveToLocalStorage();
+            setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
+            showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
           }
         }
       } else {
@@ -2976,6 +2974,7 @@
 
     try {
       await fbDb.collection('timetables').doc(docId).set(state);
+      localStorage.setItem('timetable_needs_firebase_sync', 'false');
       showToast('실시간 클라우드 저장 완료!', 'success');
       return true;
     } catch (err) {
