@@ -2948,7 +2948,7 @@
       }
     }, (error) => {
       console.warn('Firebase 리스너:', error);
-      showToast('클라우드 연결 오류 발생', 'error');
+      showToast(`클라우드 연결 오류: ${error.message || error}`, 'error');
     });
   }
 
@@ -2980,7 +2980,7 @@
       return true;
     } catch (err) {
       console.error('Firebase 저장:', err);
-      showToast('클라우드 저장 실패! (보안 규칙 또는 인터넷 확인)', 'error');
+      showToast(`클라우드 저장 실패! (${err.message || err})`, 'error');
       return false;
     }
   }
