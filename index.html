@@ -2681,12 +2681,12 @@
   }
 
   function getAppState() {
-    const baseGrid = [];
+    const baseGrid = {};
     for (let r = 0; r < 6; r++) {
       baseGrid[r] = [];
       for (let c = 0; c < 5; c++) {
         const el = document.getElementById(`base_${r}_${c}`);
-        baseGrid[r][c] = el ? el.value : '';
+        baseGrid[r].push(el ? el.value : '');
       }
     }
 
