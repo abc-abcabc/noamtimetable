@@ -2361,7 +2361,7 @@
 
     if (isManualClick) {
       saveToLocalStorage();
-      queueFirebaseSync();
+      triggerFirebaseSync();
       showCompletionAlert();
     }
   }
@@ -2660,7 +2660,7 @@
     closeModal();
     renderCalendarView();
     saveToLocalStorage();
-    queueFirebaseSync();
+    triggerFirebaseSync();
   }
 
   function resetCellToDefault() {
@@ -2670,7 +2670,7 @@
       closeModal();
       calculateAndRender(false);
       saveToLocalStorage();
-      queueFirebaseSync();
+      triggerFirebaseSync();
     }
   }
 
@@ -2919,19 +2919,31 @@
             delete remoteData.manualOverrides['2026-10-08'];
           }
         }
-        const currentData = getAppState();
 
         // 수신 중인 상태가 아닐 때만 정합성을 체크하여 동기화를 진행합니다.
         if (remoteData && !isReceivingRemoteUpdate) {
-          if (remoteData.updatedAt && remoteData.updatedAt !== lastUpdatedAt) {
-            // 원격 데이터가 로컬 데이터와 다르면 즉시 덮어씁니다.
-            isReceivingRemoteUpdate = true;
-            applyAppState(remoteData);
-            calculateAndRender(false);
-            saveToLocalStorage();
-            setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
-            showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
+          if (remoteData.updatedAt) {
+            if (remoteData.updatedAt > lastUpdatedAt) {
+              // 원격 데이터가 더 최근의 것이면 로컬 데이터를 덮어씁니다.
+              isReceivingRemoteUpdate = true;
+              applyAppState(remoteData);
+              calculateAndRender(false);
+              saveToLocalStorage();
+              setTimeout(() => { isReceivingRemoteUpdate = false; }, 500);
+              showToast('실시간 클라우드 데이터 동기화 완료!', 'success');
+            } else if (remoteData.updatedAt < lastUpdatedAt) {
+              // 로컬 데이터가 더 최근의 것이면 로컬 데이터를 원격 서버에 업로드합니다.
+              queueFirebaseSync();
+            }
+          } else {
+            // 원격 데이터에 updatedAt이 없으면 로컬 데이터가 더 유효하다고 판단하여 업로드합니다.
+            queueFirebaseSync();
           }
+        }
+      } else {
+        // 원격 데이터가 존재하지 않으면 로컬 데이터로 초기화합니다.
+        if (!isReceivingRemoteUpdate) {
+          queueFirebaseSync();
         }
       }
     }, (error) => {
@@ -2946,6 +2958,15 @@
     fbSyncDebounceTimer = setTimeout(() => {
       saveStateToFirebase();
     }, 800);
+  }
+
+  function triggerFirebaseSync() {
+    if (!fbDb || isReceivingRemoteUpdate) return;
+    if (fbSyncDebounceTimer) {
+      clearTimeout(fbSyncDebounceTimer);
+      fbSyncDebounceTimer = null;
+    }
+    saveStateToFirebase();
   }
 
   async function saveStateToFirebase() {
@@ -3060,6 +3081,19 @@
 
   window.addEventListener('resize', () => {
     setFontSizeScale(currentFontScale);
+  });
+
+  // 브라우저 탭이 닫히거나 백그라운드로 전환될 때 동기화 대기 중인 상태를 즉시 전송
+  window.addEventListener('pagehide', () => {
+    if (fbSyncDebounceTimer) {
+      triggerFirebaseSync();
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (fbSyncDebounceTimer) {
+      triggerFirebaseSync();
+    }
   });
 </script>
 </body>
