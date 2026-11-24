@@ -1683,6 +1683,20 @@
   let generatedCalendar = {};
   let manualOverrides = {};
   let currentViewDate = new Date(2026, 7, 1);
+
+  // URL로 지정한 날짜(?date=YYYY-MM-DD 또는 #YYYY-MM-DD)가 있으면 해당 월로 시작
+  let requestedViewDate = (function () {
+    try {
+      const m = /(\d{4})-(\d{2})-(\d{2})/.exec(new URLSearchParams(location.search).get('date') || location.hash);
+      if (!m) return null;
+      const d = new Date(+m[1], +m[2] - 1, +m[3]);
+      return isNaN(d) ? null : d;
+    } catch (e) { return null; }
+  })();
+  function applyRequestedViewDate() {
+    if (!requestedViewDate) return;
+    currentViewDate = new Date(requestedViewDate.getFullYear(), requestedViewDate.getMonth(), 1);
+  }
   let activeModalDate = null;
   let selectedModalColor = '';
   let currentFontScale = 100;
@@ -1825,6 +1839,7 @@
   function onCalSelectChange() {
     const y = parseInt(document.getElementById('calYearSelect').value, 10);
     const m = parseInt(document.getElementById('calMonthSelect').value, 10);
+    requestedViewDate = null;
     currentViewDate = new Date(y, m, 1);
     renderCalendarView();
   }
@@ -2579,18 +2594,21 @@
   }
 
   function changeMonth(delta) {
+    requestedViewDate = null;
     currentViewDate.setMonth(currentViewDate.getMonth() + delta);
     renderCalendarView();
   }
 
   function goToTodayMonth() {
     const now = new Date();
+    requestedViewDate = null;
     currentViewDate = new Date(now.getFullYear(), now.getMonth(), 1);
     renderCalendarView();
   }
 
   function goToCurrentSemesterStart() {
     const startDate = parseDate(document.getElementById('startDate').value);
+    requestedViewDate = null;
     currentViewDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
     renderCalendarView();
   }
@@ -2842,6 +2860,7 @@
     if (state.startDate) {
       const start = parseDate(state.startDate);
       currentViewDate = new Date(start.getFullYear(), start.getMonth(), 1);
+      applyRequestedViewDate();
       syncYearMonthDropdowns();
       syncSemesterButtonFromDates();
     }
@@ -3071,6 +3090,7 @@
       initBaseTable(defaultSchedule);
     }
     
+    applyRequestedViewDate();
     syncYearMonthDropdowns();
     calculateAndRender(false);
     initCalendarTouchSwipe();
